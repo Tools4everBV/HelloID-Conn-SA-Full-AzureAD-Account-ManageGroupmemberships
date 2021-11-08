@@ -1,6 +1,5 @@
 # Set TLS to accept TLS, TLS 1.1 and TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
-
 try {
     $searchValue = $formInput.searchUser
     $searchQuery = "*$searchValue*"
@@ -12,10 +11,8 @@ try {
         HID-Write-Summary -Message "Searching for: $searchQuery" -Event Information
           
         Hid-Write-Status -Message "Generating Microsoft Graph API Access Token user.." -Event Information
-
         $baseUri = "https://login.microsoftonline.com/"
         $authUri = $baseUri + "$AADTenantID/oauth2/token"
-
         $body = @{
             grant_type      = "client_credentials"
             client_id       = "$AADAppId"
@@ -25,7 +22,6 @@ try {
  
         $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
         $accessToken = $Response.access_token;
-
         Hid-Write-Status -Message "Searching for: $searchQuery" -Event Information
         #Add the authorization header to the request
         $authorization = @{
@@ -43,13 +39,11 @@ try {
             $azureADUsersResponse = Invoke-RestMethod -Uri $azureADUsersResponse.'@odata.nextLink' -Method Get -Headers $authorization -Verbose:$false
             $azureADUsers += $azureADUsersResponse.value
         }  
-
         $users = foreach($azureADUser in $azureADUsers){
             if($azureADUser.displayName -like $searchQuery -or $azureADUser.userPrincipalName -like $searchQuery){
                 $azureADUser
             }
         }
-
         $users = $users | Sort-Object -Property DisplayName
         $resultCount = @($users).Count
         Hid-Write-Status -Message "Result count: $resultCount" -Event Information
@@ -71,3 +65,4 @@ try {
      
     Hid-Add-TaskResult -ResultValue []
 }
+  

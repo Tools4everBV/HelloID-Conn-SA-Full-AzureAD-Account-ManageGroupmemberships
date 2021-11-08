@@ -6,7 +6,7 @@
 $portalUrl = "https://CUSTOMER.helloid.com"
 $apiKey = "API_KEY"
 $apiSecret = "API_SECRET"
-$delegatedFormAccessGroupNames = @("Users","HID_administrators") #Only unique names are supported. Groups must exist!
+$delegatedFormAccessGroupNames = @("Users") #Only unique names are supported. Groups must exist!
 $delegatedFormCategories = @("Azure Active Directory","User Management") #Only unique names are supported. Categories will be created if not exists
 $script:debugLogging = $false #Default value: $false. If $true, the HelloID resource GUIDs will be shown in the logging
 $script:duplicateForm = $false #Default value: $false. If $true, the HelloID resource names will be changed to import a duplicate Form
@@ -16,11 +16,12 @@ $script:duplicateFormSuffix = "_tmp" #the suffix will be added to all HelloID re
 #NOTE: You can also update the HelloID Global variable values afterwards in the HelloID Admin Portal: https://<CUSTOMER>.helloid.com/admin/variablelibrary
 $globalHelloIDVariables = [System.Collections.Generic.List[object]]@();
 
-#Global variable #1 >> AADtenantID
+#Global variable #1 >> AADAppId
 $tmpName = @'
-AADtenantID
+AADAppId
 '@ 
 $tmpValue = @'
+83ac862d-fe99-4bdc-8d2e-87405fdb2379
 '@ 
 $globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "False"});
 
@@ -28,7 +29,24 @@ $globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue
 $tmpName = @'
 AADAppSecret
 '@ 
+$tmpValue = "" 
+$globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "True"});
+
+#Global variable #3 >> AADtenantID
+$tmpName = @'
+AADtenantID
+'@ 
 $tmpValue = @'
+65fc161b-0c41-4cde-9908-dabf3cad26b6
+'@ 
+$globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "False"});
+
+#Global variable #4 >> companyName
+$tmpName = @'
+companyName
+'@ 
+$tmpValue = @'
+{{company.name}}
 '@ 
 $globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "False"});
 
@@ -61,7 +79,18 @@ if (-not [string]::IsNullOrEmpty($portalBaseUrl)) {
 
 # Define specific endpoint URI
 $script:PortalBaseUrl = $script:PortalBaseUrl.trim("/") + "/"  
- 
+
+# Make sure to reveive an empty array using PowerShell Core
+function ConvertFrom-Json-WithEmptyArray([string]$jsonString) {
+    # Running in PowerShell Core?
+    if($IsCoreCLR -eq $true){
+        $r = [Object[]]($jsonString | ConvertFrom-Json -NoEnumerate)
+        return ,$r  # Force return value to be an array using a comma
+    } else {
+        $r = [Object[]]($jsonString | ConvertFrom-Json)
+        return ,$r  # Force return value to be an array using a comma
+    }
+}
 
 function Invoke-HelloIDGlobalVariable {
     param(
@@ -128,7 +157,7 @@ function Invoke-HelloIDAutomationTask {
                 powerShellScript    = $PowershellScript;
                 automationContainer = $AutomationContainer;
                 objectGuid          = $ObjectGuid;
-                variables           = [Object[]]($Variables | ConvertFrom-Json);
+                variables           = (ConvertFrom-Json-WithEmptyArray($Variables));
             }
             $body = ConvertTo-Json -InputObject $body
     
@@ -179,11 +208,11 @@ function Invoke-HelloIDDatasource {
             $body = @{
                 name               = $DatasourceName;
                 type               = $DatasourceType;
-                model              = [Object[]]($DatasourceModel | ConvertFrom-Json);
+                model              = (ConvertFrom-Json-WithEmptyArray($DatasourceModel));
                 automationTaskGUID = $AutomationTaskGuid;
-                value              = [Object[]]($DatasourceStaticValue | ConvertFrom-Json);
+                value              = (ConvertFrom-Json-WithEmptyArray($DatasourceStaticValue));
                 script             = $DatasourcePsScript;
-                input              = [Object[]]($DatasourceInput | ConvertFrom-Json);
+                input              = (ConvertFrom-Json-WithEmptyArray($DatasourceInput));
             }
             $body = ConvertTo-Json -InputObject $body
       
@@ -225,7 +254,7 @@ function Invoke-HelloIDDynamicForm {
             #Create Dynamic form
             $body = @{
                 Name       = $FormName;
-                FormSchema = [Object[]]($FormSchema | ConvertFrom-Json)
+                FormSchema = (ConvertFrom-Json-WithEmptyArray($FormSchema));
             }
             $body = ConvertTo-Json -InputObject $body -Depth 100
     
@@ -273,7 +302,7 @@ function Invoke-HelloIDDelegatedForm {
                 name            = $DelegatedFormName;
                 dynamicFormGUID = $DynamicFormGuid;
                 isEnabled       = "True";
-                accessGroups    = [Object[]]($AccessGroups | ConvertFrom-Json);
+                accessGroups    = (ConvertFrom-Json-WithEmptyArray($AccessGroups));
                 useFaIcon       = $UseFaIcon;
                 faIcon          = $FaIcon;
             }    
@@ -575,7 +604,6 @@ Invoke-HelloIDDatasource -DatasourceName $dataSourceGuid_2_Name -DatasourceType 
 $tmpScript = @'
 # Set TLS to accept TLS, TLS 1.1 and TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
-
 try {
     $searchValue = $formInput.searchUser
     $searchQuery = "*$searchValue*"
@@ -587,10 +615,8 @@ try {
         HID-Write-Summary -Message "Searching for: $searchQuery" -Event Information
           
         Hid-Write-Status -Message "Generating Microsoft Graph API Access Token user.." -Event Information
-
         $baseUri = "https://login.microsoftonline.com/"
         $authUri = $baseUri + "$AADTenantID/oauth2/token"
-
         $body = @{
             grant_type      = "client_credentials"
             client_id       = "$AADAppId"
@@ -600,7 +626,6 @@ try {
  
         $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
         $accessToken = $Response.access_token;
-
         Hid-Write-Status -Message "Searching for: $searchQuery" -Event Information
         #Add the authorization header to the request
         $authorization = @{
@@ -618,13 +643,11 @@ try {
             $azureADUsersResponse = Invoke-RestMethod -Uri $azureADUsersResponse.'@odata.nextLink' -Method Get -Headers $authorization -Verbose:$false
             $azureADUsers += $azureADUsersResponse.value
         }  
-
         $users = foreach($azureADUser in $azureADUsers){
             if($azureADUser.displayName -like $searchQuery -or $azureADUser.userPrincipalName -like $searchQuery){
                 $azureADUser
             }
         }
-
         $users = $users | Sort-Object -Property DisplayName
         $resultCount = @($users).Count
         Hid-Write-Status -Message "Result count: $resultCount" -Event Information
@@ -646,10 +669,11 @@ try {
      
     Hid-Add-TaskResult -ResultValue []
 }
+  
 '@; 
 
 $tmpVariables = @'
-{"name":"searchOUs","value":"{{variable.ADusersSearchOU}}","secret":false,"typeConstraint":"string"}
+
 '@ 
 
 $taskGuid = [PSCustomObject]@{} 
