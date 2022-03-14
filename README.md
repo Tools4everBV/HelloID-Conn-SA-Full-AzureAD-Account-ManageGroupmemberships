@@ -9,6 +9,7 @@ This HelloID Service Automation Delegated Form can manage the groupmemberships f
 ## Versioning
 | Version | Description | Date |
 | - | - | - |
+| 1.1.0   | Updated with code for SA agent | 2022/03/14  |
 | 1.0.1   | Added version number and updated all-in-one script | 2021/11/08  |
 | 1.0.0   | Initial release | 2021/09/02  |
 

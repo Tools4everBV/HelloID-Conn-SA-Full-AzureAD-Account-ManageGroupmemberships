@@ -1,13 +1,12 @@
 # Set TLS to accept TLS, TLS 1.1 and TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
-
 #HelloID variables
 #Note: when running this script inside HelloID; portalUrl and API credentials are provided automatically (generate and save API credentials first in your admin panel!)
 $portalUrl = "https://CUSTOMER.helloid.com"
 $apiKey = "API_KEY"
 $apiSecret = "API_SECRET"
 $delegatedFormAccessGroupNames = @("Users") #Only unique names are supported. Groups must exist!
-$delegatedFormCategories = @("Azure Active Directory","User Management") #Only unique names are supported. Categories will be created if not exists
+$delegatedFormCategories = @("User Management","Azure Active Directory") #Only unique names are supported. Categories will be created if not exists
 $script:debugLogging = $false #Default value: $false. If $true, the HelloID resource GUIDs will be shown in the logging
 $script:duplicateForm = $false #Default value: $false. If $true, the HelloID resource names will be changed to import a duplicate Form
 $script:duplicateFormSuffix = "_tmp" #the suffix will be added to all HelloID resource names to generate a duplicate form with different resource names
@@ -16,7 +15,16 @@ $script:duplicateFormSuffix = "_tmp" #the suffix will be added to all HelloID re
 #NOTE: You can also update the HelloID Global variable values afterwards in the HelloID Admin Portal: https://<CUSTOMER>.helloid.com/admin/variablelibrary
 $globalHelloIDVariables = [System.Collections.Generic.List[object]]@();
 
-#Global variable #1 >> AADAppId
+#Global variable #1 >> AADAppSecret
+$tmpName = @'
+AADAppSecret
+'@ 
+$tmpValue = @'
+GJN7Q~_hKT8k4rpSxLdq73p6lVzq7vQir_.ME
+'@ 
+$globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "False"});
+
+#Global variable #2 >> AADAppId
 $tmpName = @'
 AADAppId
 '@ 
@@ -24,13 +32,6 @@ $tmpValue = @'
 83ac862d-fe99-4bdc-8d2e-87405fdb2379
 '@ 
 $globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "False"});
-
-#Global variable #2 >> AADAppSecret
-$tmpName = @'
-AADAppSecret
-'@ 
-$tmpValue = "" 
-$globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "True"});
 
 #Global variable #3 >> AADtenantID
 $tmpName = @'
@@ -53,7 +54,6 @@ $globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue
 
 #make sure write-information logging is visual
 $InformationPreference = "continue"
-
 # Check for prefilled API Authorization header
 if (-not [string]::IsNullOrEmpty($portalApiBasic)) {
     $script:headers = @{"authorization" = $portalApiBasic}
@@ -67,7 +67,6 @@ if (-not [string]::IsNullOrEmpty($portalApiBasic)) {
     $script:headers = @{"authorization" = $Key}
     Write-Information "Using manual API credentials"
 }
-
 # Check for prefilled PortalBaseURL
 if (-not [string]::IsNullOrEmpty($portalBaseUrl)) {
     $script:PortalBaseUrl = $portalBaseUrl
@@ -76,10 +75,8 @@ if (-not [string]::IsNullOrEmpty($portalBaseUrl)) {
     $script:PortalBaseUrl = $portalUrl
     Write-Information "Using manual PortalURL: $script:PortalBaseUrl"
 }
-
 # Define specific endpoint URI
 $script:PortalBaseUrl = $script:PortalBaseUrl.trim("/") + "/"  
-
 # Make sure to reveive an empty array using PowerShell Core
 function ConvertFrom-Json-WithEmptyArray([string]$jsonString) {
     # Running in PowerShell Core?
@@ -91,16 +88,13 @@ function ConvertFrom-Json-WithEmptyArray([string]$jsonString) {
         return ,$r  # Force return value to be an array using a comma
     }
 }
-
 function Invoke-HelloIDGlobalVariable {
     param(
         [parameter(Mandatory)][String]$Name,
         [parameter(Mandatory)][String][AllowEmptyString()]$Value,
         [parameter(Mandatory)][String]$Secret
     )
-
     $Name = $Name + $(if ($script:duplicateForm -eq $true) { $script:duplicateFormSuffix })
-
     try {
         $uri = ($script:PortalBaseUrl + "api/v1/automation/variables/named/$Name")
         $response = Invoke-RestMethod -Method Get -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false
@@ -118,7 +112,6 @@ function Invoke-HelloIDGlobalVariable {
             $uri = ($script:PortalBaseUrl + "api/v1/automation/variable")
             $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false -Body $body
             $variableGuid = $response.automationVariableGuid
-
             Write-Information "Variable '$Name' created$(if ($script:debugLogging -eq $true) { ": " + $variableGuid })"
         } else {
             $variableGuid = $response.automationVariableGuid
@@ -128,7 +121,6 @@ function Invoke-HelloIDGlobalVariable {
         Write-Error "Variable '$Name', message: $_"
     }
 }
-
 function Invoke-HelloIDAutomationTask {
     param(
         [parameter(Mandatory)][String]$TaskName,
@@ -142,7 +134,6 @@ function Invoke-HelloIDAutomationTask {
     )
     
     $TaskName = $TaskName + $(if ($script:duplicateForm -eq $true) { $script:duplicateFormSuffix })
-
     try {
         $uri = ($script:PortalBaseUrl +"api/v1/automationtasks?search=$TaskName&container=$AutomationContainer")
         $responseRaw = (Invoke-RestMethod -Method Get -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false) 
@@ -150,7 +141,6 @@ function Invoke-HelloIDAutomationTask {
     
         if([string]::IsNullOrEmpty($response.automationTaskGuid) -or $ForceCreateTask -eq $true) {
             #Create Task
-
             $body = @{
                 name                = $TaskName;
                 useTemplate         = $UseTemplate;
@@ -164,7 +154,6 @@ function Invoke-HelloIDAutomationTask {
             $uri = ($script:PortalBaseUrl +"api/v1/automationtasks/powershell")
             $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false -Body $body
             $taskGuid = $response.automationTaskGuid
-
             Write-Information "Powershell task '$TaskName' created$(if ($script:debugLogging -eq $true) { ": " + $taskGuid })"
         } else {
             #Get TaskGUID
@@ -174,10 +163,8 @@ function Invoke-HelloIDAutomationTask {
     } catch {
         Write-Error "Powershell task '$TaskName', message: $_"
     }
-
     $returnObject.Value = $taskGuid
 }
-
 function Invoke-HelloIDDatasource {
     param(
         [parameter(Mandatory)][String]$DatasourceName,
@@ -189,9 +176,7 @@ function Invoke-HelloIDDatasource {
         [parameter()][String][AllowEmptyString()]$AutomationTaskGuid,
         [parameter(Mandatory)][Ref]$returnObject
     )
-
     $DatasourceName = $DatasourceName + $(if ($script:duplicateForm -eq $true) { $script:duplicateFormSuffix })
-
     $datasourceTypeName = switch($DatasourceType) { 
         "1" { "Native data source"; break} 
         "2" { "Static data source"; break} 
@@ -229,10 +214,8 @@ function Invoke-HelloIDDatasource {
     } catch {
       Write-Error "$datasourceTypeName '$DatasourceName', message: $_"
     }
-
     $returnObject.Value = $datasourceGuid
 }
-
 function Invoke-HelloIDDynamicForm {
     param(
         [parameter(Mandatory)][String]$FormName,
@@ -241,7 +224,6 @@ function Invoke-HelloIDDynamicForm {
     )
     
     $FormName = $FormName + $(if ($script:duplicateForm -eq $true) { $script:duplicateFormSuffix })
-
     try {
         try {
             $uri = ($script:PortalBaseUrl +"api/v1/forms/$FormName")
@@ -270,11 +252,8 @@ function Invoke-HelloIDDynamicForm {
     } catch {
         Write-Error "Dynamic form '$FormName', message: $_"
     }
-
     $returnObject.Value = $formGuid
 }
-
-
 function Invoke-HelloIDDelegatedForm {
     param(
         [parameter(Mandatory)][String]$DelegatedFormName,
@@ -283,11 +262,11 @@ function Invoke-HelloIDDelegatedForm {
         [parameter()][String][AllowEmptyString()]$Categories,
         [parameter(Mandatory)][String]$UseFaIcon,
         [parameter()][String][AllowEmptyString()]$FaIcon,
+        [parameter()][String][AllowEmptyString()]$task,
         [parameter(Mandatory)][Ref]$returnObject
     )
     $delegatedFormCreated = $false
     $DelegatedFormName = $DelegatedFormName + $(if ($script:duplicateForm -eq $true) { $script:duplicateFormSuffix })
-
     try {
         try {
             $uri = ($script:PortalBaseUrl +"api/v1/delegatedforms/$DelegatedFormName")
@@ -305,6 +284,7 @@ function Invoke-HelloIDDelegatedForm {
                 accessGroups    = (ConvertFrom-Json-WithEmptyArray($AccessGroups));
                 useFaIcon       = $UseFaIcon;
                 faIcon          = $FaIcon;
+                task            = ConvertFrom-Json -inputObject $task;
             }    
             $body = ConvertTo-Json -InputObject $body
     
@@ -314,7 +294,6 @@ function Invoke-HelloIDDelegatedForm {
             $delegatedFormGuid = $response.delegatedFormGUID
             Write-Information "Delegated form '$DelegatedFormName' created$(if ($script:debugLogging -eq $true) { ": " + $delegatedFormGuid })"
             $delegatedFormCreated = $true
-
             $bodyCategories = $Categories
             $uri = ($script:PortalBaseUrl +"api/v1/delegatedforms/$delegatedFormGuid/categories")
             $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false -Body $bodyCategories
@@ -327,10 +306,10 @@ function Invoke-HelloIDDelegatedForm {
     } catch {
         Write-Error "Delegated form '$DelegatedFormName', message: $_"
     }
-
     $returnObject.value.guid = $delegatedFormGuid
     $returnObject.value.created = $delegatedFormCreated
 }
+
 <# Begin: HelloID Global Variables #>
 foreach ($item in $globalHelloIDVariables) {
 	Invoke-HelloIDGlobalVariable -Name $item.name -Value $item.value -Secret $item.secret 
@@ -339,16 +318,13 @@ foreach ($item in $globalHelloIDVariables) {
 
 
 <# Begin: HelloID Data sources #>
-<# Begin: DataSource "AzureAD-user-generate-table-groupmemberships" #>
-$tmpScript = @'
+<# Begin: DataSource "AzureAD-group-generate-table" #>
+$tmpPsScript = @'
 # Set TLS to accept TLS, TLS 1.1 and TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
 
-try {
-    $userPrincipalName = $formInput.selectedUser.UserPrincipalName
-
-    Hid-Write-Status -Message "Generating Microsoft Graph API Access Token user.." -Event Information
-
+try{
+    Write-Information "Generating Microsoft Graph API Access Token.."
     $baseUri = "https://login.microsoftonline.com/"
     $authUri = $baseUri + "$AADTenantID/oauth2/token"
 
@@ -358,263 +334,110 @@ try {
         client_secret   = "$AADAppSecret"
         resource        = "https://graph.microsoft.com"
     }
- 
-    $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
-    $accessToken = $Response.access_token;
 
-    HID-Write-Status -Message "Searching for group memberships of AzureAD user [$userPrincipalName]" -Event Information
+    $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
+    $accessToken = $Response.access_token
 
     #Add the authorization header to the request
     $authorization = @{
-        Authorization = "Bearer $accesstoken";
-        'Content-Type' = "application/json";
-        Accept = "application/json";
+        Authorization = "Bearer $accesstoken"
+        'Content-Type' = "application/json"
+        Accept = "application/json"
+        # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
+        ConsistencyLevel = "eventual"
     }
 
-    $baseSearchUri = "https://graph.microsoft.com/"
-    $searchUri = $baseSearchUri + "v1.0/users/$userPrincipalName/memberOf"
-    $azureADGroupsResponse = Invoke-RestMethod -Uri $searchUri -Method Get -Headers $authorization -Verbose:$false
-    $azureADGroups = $azureADGroupsResponse.value
-    while (![string]::IsNullOrEmpty($azureADGroupsResponse.'@odata.nextLink')) {
-        $azureADGroupsResponse = Invoke-RestMethod -Uri $azureADGroupsResponse.'@odata.nextLink' -Method Get -Headers $authorization -Verbose:$false
-        $azureADGroups += $azureADGroupsResponse.value
-    }    
+    # Define the properties to select (comma seperated)
+    # Add optinal popertySelection (mandatory: id,displayName,onPremisesSyncEnabled)
+    # Comment out $properties to select all properties
+    $properties = @("id", "displayName", "onPremisesSyncEnabled", "groupTypes")
+    if ($null -ne $properties) {
+        $select = "&`$select=$($properties -join ",")"
+    } else {
+        $select = $null
+    }
 
-    $groups = $azureADGroups
+    # Currently only Microsoft 365 and Security groups are supported by the Microsoft Graph API
+    # https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0
+    [System.Collections.ArrayList]$groups = @()
+
+    # Get Microsoft 365 Groups only (https://docs.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0&tabs=http)
+    Write-Information "Searching for Microsoft 365 groups.."
+    $baseSearchUri = "https://graph.microsoft.com/"
+    $searchUri = $baseSearchUri + "v1.0/groups?`$filter=groupTypes/any(c:c+eq+'Unified')$select"
+
+    $response = Invoke-RestMethod -Uri $searchUri -Method Get -Headers $authorization -Verbose:$false
+    [System.Collections.ArrayList]$microsoft365Groups = $response.value
+    while (![string]::IsNullOrEmpty($response.'@odata.nextLink')) {
+        $response = Invoke-RestMethod -Uri $response.'@odata.nextLink' -Method Get -Headers $authorization -Verbose:$false
+        foreach($item in $response.value){ $null = $microsoft365Groups.Add($item) }
+    }
+    Write-Information "Finished searching for Microsoft 365 groups. Found [$($microsoft365Groups.id.Count) groups]"
+    foreach($microsoft365Group in $microsoft365Groups){ $null = $groups.Add($microsoft365Group) }
+
+    # Get Security Groups only (https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0)
+    Write-Information "Searching for Security groups.."
+    $baseSearchUri = "https://graph.microsoft.com/"
+    # Filter Cloud-Only groups (onPremisesSyncEnabled = null) and Security Groups only (https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0)
+    $searchUri = $baseSearchUri + "v1.0/groups?`$filter=onPremisesSyncEnabled eq null and mailEnabled eq false and securityEnabled eq true$select"
+    # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
+    $searchUri = $searchUri + "&`$count=true"
+
+    $response = Invoke-RestMethod -Uri $searchUri -Method Get -Headers $authorization -Verbose:$false
+    [System.Collections.ArrayList]$securityGroups = $response.value
+    while (![string]::IsNullOrEmpty($response.'@odata.nextLink')) {
+        $response = Invoke-RestMethod -Uri $response.'@odata.nextLink' -Method Get -Headers $authorization -Verbose:$false
+        foreach($item in $response.value){ $null = $securityGroups.Add($item) }
+    }
+    Write-Information "Finished searching for Security Groups. Found [$($securityGroups.id.Count) groups]"
+    foreach($securityGroup in $securityGroups){
+        #Do not show dynamic security groups
+        if (-Not ($securityGroup.groupTypes -contains 'DynamicMembership')) {
+            $null = $groups.Add($securityGroup)
+        }
+    }
+
     $resultCount = @($groups).Count
+    Write-Information "Result count: $resultCount"
      
-    Hid-Write-Status -Message "Groupmemberships: $resultCount" -Event Information
-    HID-Write-Summary -Message "Groupmemberships: $resultCount" -Event Information
-         
     if($resultCount -gt 0){
         foreach($group in $groups){
             $returnObject = @{name="$($group.displayName)";id="$($group.id)"}
-            Hid-Add-TaskResult -ResultValue $returnObject
+            Write-Output $returnObject
         }
-    } else {
-        Hid-Add-TaskResult -ResultValue []
     }
 } catch {
-    HID-Write-Status -Message "Error getting groupmemberships for AzureAD user [$userPrincipalName]. Error: $($_.Exception.Message)" -Event Error
-    HID-Write-Summary -Message "Error getting groupmemberships for AzureAD user [$userPrincipalName]" -Event Failed
-     
-    Hid-Add-TaskResult -ResultValue []
+    $errorDetailsMessage = ($_.ErrorDetails.Message | ConvertFrom-Json).error.message
+    Write-Error ("Error searching for AzureAD groups. Error: $($_.Exception.Message)" + $errorDetailsMessage)
 }
-'@; 
-
-$tmpVariables = @'
-
-'@ 
-
-$taskGuid = [PSCustomObject]@{} 
-$dataSourceGuid_3_Name = @'
-AzureAD-user-generate-table-groupmemberships
-'@ 
-Invoke-HelloIDAutomationTask -TaskName $dataSourceGuid_3_Name -UseTemplate "False" -AutomationContainer "1" -Variables $tmpVariables -PowershellScript $tmpScript -returnObject ([Ref]$taskGuid) 
-
-$tmpInput = @'
-[{"description":"","translateDescription":false,"inputFieldType":1,"key":"selectedUser","type":0,"options":1}]
 '@ 
 $tmpModel = @'
 [{"key":"id","type":0},{"key":"name","type":0}]
 '@ 
-$dataSourceGuid_3 = [PSCustomObject]@{} 
-$dataSourceGuid_3_Name = @'
-AzureAD-user-generate-table-groupmemberships
-'@ 
-Invoke-HelloIDDatasource -DatasourceName $dataSourceGuid_3_Name -DatasourceType "3" -DatasourceInput $tmpInput -DatasourceModel $tmpModel -AutomationTaskGuid $taskGuid -returnObject ([Ref]$dataSourceGuid_3) 
-<# End: DataSource "AzureAD-user-generate-table-groupmemberships" #>
-
-<# Begin: DataSource "AzureAD-user-generate-table-attributes-basic" #>
-$tmpScript = @'
-# Set TLS to accept TLS, TLS 1.1 and TLS 1.2
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
-
-try {
-    $userPrincipalName = $formInput.selectedUser.UserPrincipalName
-
-    Hid-Write-Status -Message "Generating Microsoft Graph API Access Token user.." -Event Information
-
-    $baseUri = "https://login.microsoftonline.com/"
-    $authUri = $baseUri + "$AADTenantID/oauth2/token"
-
-    $body = @{
-        grant_type      = "client_credentials"
-        client_id       = "$AADAppId"
-        client_secret   = "$AADAppSecret"
-        resource        = "https://graph.microsoft.com"
-    }
- 
-    $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
-    $accessToken = $Response.access_token;
-         
-    Hid-Write-Status -Message "Searching for AzureAD user userPrincipalName=$userPrincipalName" -Event Information
-
-
-    #Add the authorization header to the request
-    $authorization = @{
-        Authorization = "Bearer $accesstoken";
-        'Content-Type' = "application/json";
-        Accept = "application/json";
-    }
- 
-    $properties = @("displayName","userPrincipalName","givenName","surname","department","jobTitle","companyName","businessPhones","mobilePhone")
- 
-    $baseSearchUri = "https://graph.microsoft.com/"
-    $searchUri = $baseSearchUri + "v1.0/users/$userPrincipalName" + '?$select=' + ($properties -join ",")
-    $azureADUser = Invoke-RestMethod -Uri $searchUri -Method Get -Headers $authorization -Verbose:$false
-    HID-Write-Status -Message "Finished searching AzureAD user [$userPrincipalName]" -Event Information
-      
-    foreach($tmp in $azureADUser.psObject.properties)
-    {
-        if($tmp.Name -in $properties){
-            $returnObject = @{name=$tmp.Name; value=$tmp.value}
-            Hid-Add-TaskResult -ResultValue $returnObject
-        }
-    }
-   
-    HID-Write-Status -Message "Finished retrieving AzureAD user [$userPrincipalName] basic attributes" -Event Success
-    HID-Write-Summary -Message "Finished retrieving AzureAD user [$userPrincipalName] basic attributes" -Event Success
-} catch {
-    $errorDetailsMessage = ($_.ErrorDetails.Message | ConvertFrom-Json).error.message
-    HID-Write-Status -Message ("Error searching for AzureAD groups. Error: $($_.Exception.Message)" + $errorDetailsMessage) -Event Error
-    HID-Write-Summary -Message "Error searching for AzureAD groups" -Event Failed
-     
-    Hid-Add-TaskResult -ResultValue []
-}
-'@; 
-
-$tmpVariables = @'
-
-'@ 
-
-$taskGuid = [PSCustomObject]@{} 
-$dataSourceGuid_1_Name = @'
-AzureAD-user-generate-table-attributes-basic
-'@ 
-Invoke-HelloIDAutomationTask -TaskName $dataSourceGuid_1_Name -UseTemplate "False" -AutomationContainer "1" -Variables $tmpVariables -PowershellScript $tmpScript -returnObject ([Ref]$taskGuid) 
-
-$tmpInput = @'
-[{"description":"","translateDescription":false,"inputFieldType":1,"key":"selectedUser","type":0,"options":1}]
-'@ 
-$tmpModel = @'
-[{"key":"value","type":0},{"key":"name","type":0}]
-'@ 
-$dataSourceGuid_1 = [PSCustomObject]@{} 
-$dataSourceGuid_1_Name = @'
-AzureAD-user-generate-table-attributes-basic
-'@ 
-Invoke-HelloIDDatasource -DatasourceName $dataSourceGuid_1_Name -DatasourceType "3" -DatasourceInput $tmpInput -DatasourceModel $tmpModel -AutomationTaskGuid $taskGuid -returnObject ([Ref]$dataSourceGuid_1) 
-<# End: DataSource "AzureAD-user-generate-table-attributes-basic" #>
-
-<# Begin: DataSource "AzureAD-group-generate-table" #>
-$tmpScript = @'
-# Set TLS to accept TLS, TLS 1.1 and TLS 1.2
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
-
-try {    
-    Hid-Write-Status -Message "Generating Microsoft Graph API Access Token user.." -Event Information
-
-    $baseUri = "https://login.microsoftonline.com/"
-    $authUri = $baseUri + "$AADTenantID/oauth2/token"
-
-    $body = @{
-        grant_type      = "client_credentials"
-        client_id       = "$AADAppId"
-        client_secret   = "$AADAppSecret"
-        resource        = "https://graph.microsoft.com"
-    }
- 
-    $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
-    $accessToken = $Response.access_token;
-
-    Hid-Write-Status -Message "Searching for AzureAD groups.." -Event Information
-
-    #Add the authorization header to the request
-    $authorization = @{
-        Authorization = "Bearer $accesstoken";
-        'Content-Type' = "application/json";
-        Accept = "application/json";
-    }
- 
-    $baseSearchUri = "https://graph.microsoft.com/"
-    $searchUri = $baseSearchUri + 'v1.0/groups?$orderby=displayName'
-
-    $azureADGroupsResponse = Invoke-RestMethod -Uri $searchUri -Method Get -Headers $authorization -Verbose:$false
-    $azureADGroups = $azureADGroupsResponse.value
-    while (![string]::IsNullOrEmpty($azureADGroupsResponse.'@odata.nextLink')) {
-        $azureADGroupsResponse = Invoke-RestMethod -Uri $azureADGroupsResponse.'@odata.nextLink' -Method Get -Headers $authorization -Verbose:$false
-        $azureADGroups += $azureADGroupsResponse.value
-    }    
-    
-    #Filter for only Cloud groups, since synced groups can only be managed by the Sync
-    $azureADGroups = foreach($azureADGroup in $azureADGroups){
-        if($azureADGroup.onPremisesSyncEnabled -eq $null){
-            $azureADGroup
-        }
-    }
-
-    $groups = $azureADGroups
-    $resultCount = @($groups).Count
-     
-    Hid-Write-Status -Message "Result count: $resultCount" -Event Information
-    HID-Write-Summary -Message "Result count: $resultCount" -Event Information
-     
-    if($resultCount -gt 0){
-        foreach($group in $groups){
-            $returnObject = @{name="$($group.displayName)";id="$($group.id)"}
-            Hid-Add-TaskResult -ResultValue $returnObject
-        }
-    } else {
-        Hid-Add-TaskResult -ResultValue []
-    }
-} catch {
-    $errorDetailsMessage = ($_.ErrorDetails.Message | ConvertFrom-Json).error.message
-    HID-Write-Status -Message ("Error searching for AzureAD groups. Error: $($_.Exception.Message)" + $errorDetailsMessage) -Event Error
-    HID-Write-Summary -Message "Error searching for AzureAD groups" -Event Failed
-     
-    Hid-Add-TaskResult -ResultValue []
-}
-'@; 
-
-$tmpVariables = @'
-
-'@ 
-
-$taskGuid = [PSCustomObject]@{} 
-$dataSourceGuid_2_Name = @'
-AzureAD-group-generate-table
-'@ 
-Invoke-HelloIDAutomationTask -TaskName $dataSourceGuid_2_Name -UseTemplate "False" -AutomationContainer "1" -Variables $tmpVariables -PowershellScript $tmpScript -returnObject ([Ref]$taskGuid) 
-
 $tmpInput = @'
 []
-'@ 
-$tmpModel = @'
-[{"key":"name","type":0},{"key":"id","type":0}]
 '@ 
 $dataSourceGuid_2 = [PSCustomObject]@{} 
 $dataSourceGuid_2_Name = @'
 AzureAD-group-generate-table
 '@ 
-Invoke-HelloIDDatasource -DatasourceName $dataSourceGuid_2_Name -DatasourceType "3" -DatasourceInput $tmpInput -DatasourceModel $tmpModel -AutomationTaskGuid $taskGuid -returnObject ([Ref]$dataSourceGuid_2) 
+Invoke-HelloIDDatasource -DatasourceName $dataSourceGuid_2_Name -DatasourceType "4" -DatasourceInput $tmpInput -DatasourcePsScript $tmpPsScript -DatasourceModel $tmpModel -returnObject ([Ref]$dataSourceGuid_2) 
 <# End: DataSource "AzureAD-group-generate-table" #>
 
 <# Begin: DataSource "AzureAD-user-generate-table-wildcard" #>
-$tmpScript = @'
+$tmpPsScript = @'
 # Set TLS to accept TLS, TLS 1.1 and TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
+
 try {
-    $searchValue = $formInput.searchUser
+    $searchValue = $datasource.searchUser
     $searchQuery = "*$searchValue*"
       
-      
     if([String]::IsNullOrEmpty($searchValue) -eq $true){
-        Hid-Add-TaskResult -ResultValue []
     }else{
-        HID-Write-Summary -Message "Searching for: $searchQuery" -Event Information
+        Write-Information "Searching for: $searchQuery"
           
-        Hid-Write-Status -Message "Generating Microsoft Graph API Access Token user.." -Event Information
+        Write-Information "Generating Microsoft Graph API Access Token.."
         $baseUri = "https://login.microsoftonline.com/"
         $authUri = $baseUri + "$AADTenantID/oauth2/token"
         $body = @{
@@ -626,7 +449,8 @@ try {
  
         $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
         $accessToken = $Response.access_token;
-        Hid-Write-Status -Message "Searching for: $searchQuery" -Event Information
+
+        Write-Information "Searching for: $searchQuery"
         #Add the authorization header to the request
         $authorization = @{
             Authorization = "Bearer $accesstoken";
@@ -650,55 +474,172 @@ try {
         }
         $users = $users | Sort-Object -Property DisplayName
         $resultCount = @($users).Count
-        Hid-Write-Status -Message "Result count: $resultCount" -Event Information
-        HID-Write-Summary -Message "Result count: $resultCount" -Event Information
+        Write-Information "Result count: $resultCount"
           
         if($resultCount -gt 0){
             foreach($user in $users){
                 $returnObject = @{UserPrincipalName=$user.UserPrincipalName; displayName=$user.displayName; department=$user.department; Title=$user.jobTitle; Company=$user.companyName}
-                Hid-Add-TaskResult -ResultValue $returnObject
+                Write-Output $returnObject
             }
-        } else {
-            Hid-Add-TaskResult -ResultValue []
         }
     }
 } catch {
     $errorDetailsMessage = ($_.ErrorDetails.Message | ConvertFrom-Json).error.message
-    HID-Write-Status -Message ("Error searching for AzureAD groups. Error: $($_.Exception.Message)" + $errorDetailsMessage) -Event Error
-    HID-Write-Summary -Message "Error searching for AzureAD groups" -Event Failed
-     
-    Hid-Add-TaskResult -ResultValue []
+    Write-Error ("Error searching for AzureAD groups. Error: $($_.Exception.Message)" + $errorDetailsMessage)
 }
   
-'@; 
-
-$tmpVariables = @'
-
-'@ 
-
-$taskGuid = [PSCustomObject]@{} 
-$dataSourceGuid_0_Name = @'
-AzureAD-user-generate-table-wildcard
-'@ 
-Invoke-HelloIDAutomationTask -TaskName $dataSourceGuid_0_Name -UseTemplate "False" -AutomationContainer "1" -Variables $tmpVariables -PowershellScript $tmpScript -returnObject ([Ref]$taskGuid) 
-
-$tmpInput = @'
-[{"description":"","translateDescription":false,"inputFieldType":1,"key":"searchUser","type":0,"options":1}]
 '@ 
 $tmpModel = @'
-[{"key":"displayName","type":0},{"key":"Company","type":0},{"key":"Department","type":0},{"key":"Description","type":0},{"key":"SamAccountName","type":0},{"key":"Title","type":0},{"key":"UserPrincipalName","type":0}]
+[{"key":"displayName","type":0},{"key":"department","type":0},{"key":"UserPrincipalName","type":0},{"key":"Company","type":0},{"key":"Title","type":0}]
+'@ 
+$tmpInput = @'
+[{"description":"","translateDescription":false,"inputFieldType":1,"key":"searchUser","type":0,"options":1}]
 '@ 
 $dataSourceGuid_0 = [PSCustomObject]@{} 
 $dataSourceGuid_0_Name = @'
 AzureAD-user-generate-table-wildcard
 '@ 
-Invoke-HelloIDDatasource -DatasourceName $dataSourceGuid_0_Name -DatasourceType "3" -DatasourceInput $tmpInput -DatasourceModel $tmpModel -AutomationTaskGuid $taskGuid -returnObject ([Ref]$dataSourceGuid_0) 
+Invoke-HelloIDDatasource -DatasourceName $dataSourceGuid_0_Name -DatasourceType "4" -DatasourceInput $tmpInput -DatasourcePsScript $tmpPsScript -DatasourceModel $tmpModel -returnObject ([Ref]$dataSourceGuid_0) 
 <# End: DataSource "AzureAD-user-generate-table-wildcard" #>
+
+<# Begin: DataSource "AzureAD-user-generate-table-groupmemberships" #>
+$tmpPsScript = @'
+# Set TLS to accept TLS, TLS 1.1 and TLS 1.2
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
+
+try {
+    $userPrincipalName = $datasource.selectedUser.UserPrincipalName
+
+    Write-Information "Generating Microsoft Graph API Access Token user.."
+
+    $baseUri = "https://login.microsoftonline.com/"
+    $authUri = $baseUri + "$AADTenantID/oauth2/token"
+
+    $body = @{
+        grant_type      = "client_credentials"
+        client_id       = "$AADAppId"
+        client_secret   = "$AADAppSecret"
+        resource        = "https://graph.microsoft.com"
+    }
+ 
+    $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
+    $accessToken = $Response.access_token;
+
+    Write-Information "Searching for group memberships of AzureAD user [$userPrincipalName]"
+
+    #Add the authorization header to the request
+    $authorization = @{
+        Authorization = "Bearer $accesstoken";
+        'Content-Type' = "application/json";
+        Accept = "application/json";
+    }
+
+    $baseSearchUri = "https://graph.microsoft.com/"
+    $searchUri = $baseSearchUri + "v1.0/users/$userPrincipalName/memberOf"
+    $azureADGroupsResponse = Invoke-RestMethod -Uri $searchUri -Method Get -Headers $authorization -Verbose:$false
+    $azureADGroups = $azureADGroupsResponse.value
+    while (![string]::IsNullOrEmpty($azureADGroupsResponse.'@odata.nextLink')) {
+        $azureADGroupsResponse = Invoke-RestMethod -Uri $azureADGroupsResponse.'@odata.nextLink' -Method Get -Headers $authorization -Verbose:$false
+        $azureADGroups += $azureADGroupsResponse.value
+    }    
+
+    $groups = $azureADGroups
+    $resultCount = @($groups).Count
+    Write-Information "Groupmemberships: $resultCount"
+         
+    if($resultCount -gt 0){
+        foreach($group in $groups){
+            $returnObject = @{name="$($group.displayName)";id="$($group.id)"}
+            Write-Output $returnObject
+        }
+    }
+} catch {
+    Write-Error "Error getting groupmemberships for AzureAD user [$userPrincipalName]. Error: $($_.Exception.Message)"
+}
+'@ 
+$tmpModel = @'
+[{"key":"id","type":0},{"key":"name","type":0}]
+'@ 
+$tmpInput = @'
+[{"description":"","translateDescription":false,"inputFieldType":1,"key":"selectedUser","type":0,"options":1}]
+'@ 
+$dataSourceGuid_3 = [PSCustomObject]@{} 
+$dataSourceGuid_3_Name = @'
+AzureAD-user-generate-table-groupmemberships
+'@ 
+Invoke-HelloIDDatasource -DatasourceName $dataSourceGuid_3_Name -DatasourceType "4" -DatasourceInput $tmpInput -DatasourcePsScript $tmpPsScript -DatasourceModel $tmpModel -returnObject ([Ref]$dataSourceGuid_3) 
+<# End: DataSource "AzureAD-user-generate-table-groupmemberships" #>
+
+<# Begin: DataSource "AzureAD-user-generate-table-attributes-basic" #>
+$tmpPsScript = @'
+# Set TLS to accept TLS, TLS 1.1 and TLS 1.2
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
+
+try {
+    $userPrincipalName = $datasource.selectedUser.UserPrincipalName
+
+    Write-Information "Generating Microsoft Graph API Access Token.."
+
+    $baseUri = "https://login.microsoftonline.com/"
+    $authUri = $baseUri + "$AADTenantID/oauth2/token"
+
+    $body = @{
+        grant_type      = "client_credentials"
+        client_id       = "$AADAppId"
+        client_secret   = "$AADAppSecret"
+        resource        = "https://graph.microsoft.com"
+    }
+ 
+    $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
+    $accessToken = $Response.access_token;
+         
+    Write-Information "Searching for AzureAD user userPrincipalName=$userPrincipalName"
+
+    #Add the authorization header to the request
+    $authorization = @{
+        Authorization = "Bearer $accesstoken";
+        'Content-Type' = "application/json";
+        Accept = "application/json";
+    }
+ 
+    $properties = @("displayName","userPrincipalName","givenName","surname","department","jobTitle","companyName","businessPhones","mobilePhone")
+ 
+    $baseSearchUri = "https://graph.microsoft.com/"
+    $searchUri = $baseSearchUri + "v1.0/users/$userPrincipalName" + '?$select=' + ($properties -join ",")
+    $azureADUser = Invoke-RestMethod -Uri $searchUri -Method Get -Headers $authorization -Verbose:$false
+    Write-Information "Finished searching AzureAD user [$userPrincipalName]"
+      
+    foreach($tmp in $azureADUser.psObject.properties)
+    {
+        if($tmp.Name -in $properties){
+            $returnObject = @{name=$tmp.Name; value=$tmp.value}
+            Write-Output $returnObject
+        }
+    }
+   
+    Write-Information "Finished retrieving AzureAD user [$userPrincipalName] basic attributes"
+} catch {
+    $errorDetailsMessage = ($_.ErrorDetails.Message | ConvertFrom-Json).error.message
+    Write-Error ("Error searching for AzureAD groups. Error: $($_.Exception.Message)" + $errorDetailsMessage)
+}
+'@ 
+$tmpModel = @'
+[{"key":"name","type":0},{"key":"value","type":0}]
+'@ 
+$tmpInput = @'
+[{"description":"","translateDescription":false,"inputFieldType":1,"key":"selectedUser","type":0,"options":1}]
+'@ 
+$dataSourceGuid_1 = [PSCustomObject]@{} 
+$dataSourceGuid_1_Name = @'
+AzureAD-user-generate-table-attributes-basic
+'@ 
+Invoke-HelloIDDatasource -DatasourceName $dataSourceGuid_1_Name -DatasourceType "4" -DatasourceInput $tmpInput -DatasourcePsScript $tmpPsScript -DatasourceModel $tmpModel -returnObject ([Ref]$dataSourceGuid_1) 
+<# End: DataSource "AzureAD-user-generate-table-attributes-basic" #>
 <# End: HelloID Data sources #>
 
 <# Begin: Dynamic Form "AzureAD Account - Manage groupmemberships" #>
 $tmpSchema = @"
-[{"label":"Select user account","fields":[{"key":"searchfield","templateOptions":{"label":"Search","placeholder":"Username or email address"},"type":"input","summaryVisibility":"Hide element","requiresTemplateOptions":true},{"key":"gridUsers","templateOptions":{"label":"Select user account","required":true,"grid":{"columns":[{"headerName":"Display Name","field":"displayName"},{"headerName":"Description","field":"Description"},{"headerName":"User Principal Name","field":"UserPrincipalName"},{"headerName":"Company","field":"Company"},{"headerName":"Department","field":"Department"},{"headerName":"Title","field":"Title"}],"height":300,"rowSelection":"single"},"dataSourceConfig":{"dataSourceGuid":"$dataSourceGuid_0","input":{"propertyInputs":[{"propertyName":"searchUser","otherFieldValue":{"otherFieldKey":"searchfield"}}]}},"useFilter":false},"type":"grid","summaryVisibility":"Show","requiresTemplateOptions":true}]},{"label":"Memberships","fields":[{"key":"gridDetails","templateOptions":{"label":"Basic attributes","required":false,"grid":{"columns":[{"headerName":"Name","field":"name"},{"headerName":"Value","field":"value"}],"height":350,"rowSelection":"single"},"dataSourceConfig":{"dataSourceGuid":"$dataSourceGuid_1","input":{"propertyInputs":[{"propertyName":"selectedUser","otherFieldValue":{"otherFieldKey":"gridUsers"}}]}},"useFilter":false},"type":"grid","summaryVisibility":"Hide element","requiresTemplateOptions":true},{"key":"memberships","templateOptions":{"label":"Memberships","required":false,"filterable":true,"useDataSource":true,"dualList":{"options":[{"guid":"75ea2890-88f8-4851-b202-626123054e14","Name":"Apple"},{"guid":"0607270d-83e2-4574-9894-0b70011b663f","Name":"Pear"},{"guid":"1ef6fe01-3095-4614-a6db-7c8cd416ae3b","Name":"Orange"}],"optionKeyProperty":"id","optionDisplayProperty":"name","labelLeft":"Available","labelRight":"Member of"},"dataSourceConfig":{"dataSourceGuid":"$dataSourceGuid_2","input":{"propertyInputs":[]}},"destinationDataSourceConfig":{"dataSourceGuid":"$dataSourceGuid_3","input":{"propertyInputs":[{"propertyName":"selectedUser","otherFieldValue":{"otherFieldKey":"gridUsers"}}]}},"useFilter":false},"type":"duallist","summaryVisibility":"Show","requiresTemplateOptions":true}]}]
+[{"label":"Select user account","fields":[{"key":"searchfield","templateOptions":{"label":"Search","placeholder":"Username or email address"},"type":"input","summaryVisibility":"Hide element","requiresTemplateOptions":true,"requiresKey":true,"requiresDataSource":false},{"key":"gridUsers","templateOptions":{"label":"Select user account","required":true,"grid":{"columns":[{"headerName":"Display Name","field":"displayName"},{"headerName":"Description","field":"Description"},{"headerName":"User Principal Name","field":"UserPrincipalName"},{"headerName":"Company","field":"Company"},{"headerName":"Department","field":"Department"},{"headerName":"Title","field":"Title"}],"height":300,"rowSelection":"single"},"dataSourceConfig":{"dataSourceGuid":"$dataSourceGuid_0","input":{"propertyInputs":[{"propertyName":"searchUser","otherFieldValue":{"otherFieldKey":"searchfield"}}]}},"useFilter":false},"type":"grid","summaryVisibility":"Show","requiresTemplateOptions":true,"requiresKey":true,"requiresDataSource":true}]},{"label":"Memberships","fields":[{"key":"gridDetails","templateOptions":{"label":"Basic attributes","required":false,"grid":{"columns":[{"headerName":"Name","field":"name"},{"headerName":"Value","field":"value"}],"height":350,"rowSelection":"single"},"dataSourceConfig":{"dataSourceGuid":"$dataSourceGuid_1","input":{"propertyInputs":[{"propertyName":"selectedUser","otherFieldValue":{"otherFieldKey":"gridUsers"}}]}},"useFilter":false},"type":"grid","summaryVisibility":"Hide element","requiresTemplateOptions":true,"requiresKey":true,"requiresDataSource":true},{"key":"memberships","templateOptions":{"label":"Memberships","required":false,"filterable":true,"useDataSource":true,"dualList":{"options":[{"guid":"75ea2890-88f8-4851-b202-626123054e14","Name":"Apple"},{"guid":"0607270d-83e2-4574-9894-0b70011b663f","Name":"Pear"},{"guid":"1ef6fe01-3095-4614-a6db-7c8cd416ae3b","Name":"Orange"}],"optionKeyProperty":"id","optionDisplayProperty":"name","labelLeft":"Available","labelRight":"Member of"},"dataSourceConfig":{"dataSourceGuid":"$dataSourceGuid_2","input":{"propertyInputs":[]}},"destinationDataSourceConfig":{"dataSourceGuid":"$dataSourceGuid_3","input":{"propertyInputs":[{"propertyName":"selectedUser","otherFieldValue":{"otherFieldKey":"gridUsers"}}]}},"useFilter":false},"type":"duallist","summaryVisibility":"Show","sourceDataSourceIdentifierSuffix":"source-datasource","destinationDataSourceIdentifierSuffix":"destination-datasource","requiresTemplateOptions":true,"requiresKey":true,"requiresDataSource":false}]}]
 "@ 
 
 $dynamicFormGuid = [PSCustomObject]@{} 
@@ -723,7 +664,6 @@ foreach($group in $delegatedFormAccessGroupNames) {
     }
 }
 $delegatedFormAccessGroupGuids = ($delegatedFormAccessGroupGuids | Select-Object -Unique | ConvertTo-Json -Compress)
-
 $delegatedFormCategoryGuids = @()
 foreach($category in $delegatedFormCategories) {
     try {
@@ -739,12 +679,10 @@ foreach($category in $delegatedFormCategories) {
             name = @{"en" = $category};
         }
         $body = ConvertTo-Json -InputObject $body
-
         $uri = ($script:PortalBaseUrl +"api/v1/delegatedformcategories")
         $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false -Body $body
         $tmpGuid = $response.delegatedFormCategoryGuid
         $delegatedFormCategoryGuids += $tmpGuid
-
         Write-Information "HelloID Delegated Form category '$category' successfully created$(if ($script:debugLogging -eq $true) { ": " + $tmpGuid })"
     }
 }
@@ -756,114 +694,10 @@ $delegatedFormRef = [PSCustomObject]@{guid = $null; created = $null}
 $delegatedFormName = @'
 AzureAD Account - Manage groupmemberships
 '@
-Invoke-HelloIDDelegatedForm -DelegatedFormName $delegatedFormName -DynamicFormGuid $dynamicFormGuid -AccessGroups $delegatedFormAccessGroupGuids -Categories $delegatedFormCategoryGuids -UseFaIcon "True" -FaIcon "fa fa-user" -returnObject ([Ref]$delegatedFormRef) 
-<# End: Delegated Form #>
-
-<# Begin: Delegated Form Task #>
-if($delegatedFormRef.created -eq $true) { 
-	$tmpScript = @'
-# Set TLS to accept TLS, TLS 1.1 and TLS 1.2
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
-
-try {
-    Hid-Write-Status -Message "Generating Microsoft Graph API Access Token user.." -Event Information
-
-    $baseUri = "https://login.microsoftonline.com/"
-    $authUri = $baseUri + "$AADTenantID/oauth2/token"
-
-    $body = @{
-        grant_type      = "client_credentials"
-        client_id       = "$AADAppId"
-        client_secret   = "$AADAppSecret"
-        resource        = "https://graph.microsoft.com"
-    }
- 
-    $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
-    $accessToken = $Response.access_token;
-         
-    Hid-Write-Status -Message "Searching for AzureAD user userPrincipalName=$userPrincipalName" -Event Information
-
-    #Add the authorization header to the request
-    $authorization = @{
-        Authorization = "Bearer $accesstoken";
-        'Content-Type' = "application/json";
-        Accept = "application/json";
-    }
-
-    $baseSearchUri = "https://graph.microsoft.com/"
-    $searchUri = $baseSearchUri + "v1.0/users/$userPrincipalName"
-    $azureADUser = Invoke-RestMethod -Uri $searchUri -Method Get -Headers $authorization -Verbose:$false
-    HID-Write-Status -Message "Finished searching AzureAD user [$userPrincipalName]" -Event Information
-
-} catch {
-    HID-Write-Status -Message "Could not find AzureAD user [$userPrincipalName]. Error: $($_.Exception.Message)" -Event Error
-    HID-Write-Summary -Message "Failed to find AzureAD user [$userPrincipalName]" -Event Failed
-}
-
-if($groupsToAdd -ne "[]"){
-    try {
-        $groupsToAddJson =  $groupsToAdd | ConvertFrom-Json
-
-        foreach($group in $groupsToAddJson){
-            #Add the authorization header to the request
-            $authorization = @{
-                Authorization = "Bearer $accesstoken";
-                'Content-Type' = "application/json";
-                Accept = "application/json";
-            }
-
-            $baseGraphUri = "https://graph.microsoft.com/"
-            $addGroupMembershipUri = $baseGraphUri + "v1.0/groups/$($group.id)/members" + '/$ref'
-            $body = @{ "@odata.id"= "https://graph.microsoft.com/v1.0/users/$($azureADUser.id)" } | ConvertTo-Json -Depth 10
-
-            $response = Invoke-RestMethod -Method POST -Uri $addGroupMembershipUri -Body $body -Headers $authorization -Verbose:$false
-        }
-
-        HID-Write-Status -Message "Finished adding AzureAD user [$userPrincipalName] to AzureAD groups $($groupsToAddJson | ConvertTo-Json)" -Event Success
-        HID-Write-Summary -Message "Successfully added AzureAD user [$userPrincipalName] to AzureAD groups" -Event Success
-    } catch {
-        HID-Write-Status -Message "Could not add AzureAD user [$userPrincipalName] to AzureAD groups $($groupsToAddJson | ConvertTo-Json). Error: $($_.Exception.Message)" -Event Error
-        HID-Write-Summary -Message "Failed to add AzureAD user [$userPrincipalName] to AzureAD groups" -Event Failed
-    }
-}
-
-if($groupsToRemove -ne "[]"){
-    try {
-        $groupsToRemoveJson =  $groupsToRemove | ConvertFrom-Json
-
-        foreach($group in $groupsToRemoveJson){
-            #Add the authorization header to the request
-            $authorization = @{
-                Authorization = "Bearer $accesstoken";
-                'Content-Type' = "application/json";
-                Accept = "application/json";
-            }
-
-            $baseGraphUri = "https://graph.microsoft.com/"
-            $removeGroupMembershipUri = $baseGraphUri + "v1.0/groups/$($group.id)/members/$($azureADUser.id)" + '/$ref'
-
-            $response = Invoke-RestMethod -Method DELETE -Uri $removeGroupMembershipUri -Headers $authorization -Verbose:$false
-        }
-
-        HID-Write-Status -Message "Finished removing AzureAD user [$userPrincipalName] from AzureAD groups $($groupsToRemoveJson | ConvertTo-Json)" -Event Success
-        HID-Write-Summary -Message "Successfully removed AzureAD user [$userPrincipalName] from AzureAD groups" -Event Success
-    } catch {
-        HID-Write-Status -Message "Could not remove AzureAD user [$userPrincipalName] from AzureAD groups $($groupsToRemoveJson | ConvertTo-Json). Error: $($_.Exception.Message)" -Event Error
-        HID-Write-Summary -Message "Failed to remove AzureAD user [$userPrincipalName] from AzureAD groups" -Event Failed
-    }
-} 
-'@; 
-
-	$tmpVariables = @'
-[{"name":"groupsToAdd","value":"{{form.memberships.leftToRight.toJsonString}}","secret":false,"typeConstraint":"string"},{"name":"groupsToRemove","value":"{{form.memberships.rightToLeft.toJsonString}}","secret":false,"typeConstraint":"string"},{"name":"userPrincipalName","value":"{{form.gridUsers.UserPrincipalName}}","secret":false,"typeConstraint":"string"}]
+$tmpTask = @'
+{"name":"AzureAD Account - Manage groupmemberships","script":"$groupsToAdd = $form.memberships.leftToRight\r\n$groupsToRemove = $form.memberships.RightToLeft\r\n$userPrincipalName = $form.gridUsers.UserPrincipalName\r\n\r\n# Set TLS to accept TLS, TLS 1.1 and TLS 1.2\r\n[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12\r\n\r\ntry {\r\n    Write-Information \"Generating Microsoft Graph API Access Token..\"\r\n\r\n    $baseUri = \"https://login.microsoftonline.com/\"\r\n    $authUri = $baseUri + \"$AADTenantID/oauth2/token\"\r\n\r\n    $body = @{\r\n        grant_type      = \"client_credentials\"\r\n        client_id       = \"$AADAppId\"\r\n        client_secret   = \"$AADAppSecret\"\r\n        resource        = \"https://graph.microsoft.com\"\r\n    }\r\n \r\n    $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'\r\n    $accessToken = $Response.access_token;\r\n         \r\n    Write-Information \"Searching for AzureAD user userPrincipalName=$userPrincipalName\"\r\n\r\n    #Add the authorization header to the request\r\n    $authorization = @{\r\n        Authorization = \"Bearer $accesstoken\";\r\n        'Content-Type' = \"application/json\";\r\n        Accept = \"application/json\";\r\n    }\r\n\r\n    $baseSearchUri = \"https://graph.microsoft.com/\"\r\n    $searchUri = $baseSearchUri + \"v1.0/users/$userPrincipalName\"\r\n    $azureADUser = Invoke-RestMethod -Uri $searchUri -Method Get -Headers $authorization -Verbose:$false\r\n    Write-Information \"Finished searching AzureAD user [$userPrincipalName]\"\r\n} catch {\r\n    Write-Error \"Could not find AzureAD user [$userPrincipalName]. Error: $($_.Exception.Message)\"\r\n}\r\n\r\ntry {\r\n    foreach($group in $groupsToAdd){\r\n        try{\r\n            #Add the authorization header to the request\r\n            $authorization = @{\r\n                Authorization = \"Bearer $accesstoken\";\r\n                'Content-Type' = \"application/json\";\r\n                Accept = \"application/json\";\r\n            }\r\n\r\n            $baseGraphUri = \"https://graph.microsoft.com/\"\r\n            $addGroupMembershipUri = $baseGraphUri + \"v1.0/groups/$($group.id)/members\" + '/$ref'\r\n            $body = @{ \"@odata.id\"= \"https://graph.microsoft.com/v1.0/users/$($azureADUser.id)\" } | ConvertTo-Json -Depth 10\r\n\r\n            $response = Invoke-RestMethod -Method POST -Uri $addGroupMembershipUri -Body $body -Headers $authorization -Verbose:$false\r\n            Write-Information \"Successfully added AzureAD user [$userPrincipalName] to AzureAD group $($group)\"\r\n        } catch {\r\n            if($_ -like \"*One or more added object references already exist for the following modified properties*\"){\r\n                Write-Information \"AzureAD user [$userPrincipalName] is already a member of group $($group)\"\r\n            }else{\r\n                Write-Warning \"Could not add AzureAD user [$userPrincipalName] to AzureAD group $($group). Error: $($_.Exception.Message)\"\r\n            }\r\n        }\r\n    }\r\n} catch {\r\n    Write-Error \"Could not add AzureAD user [$userPrincipalName] to AzureAD groups $($groupsToAdd). Error: $($_.Exception.Message)\"\r\n}\r\n\r\ntry {\r\n    foreach($group in $groupsToRemove){\r\n        try{\r\n            #Add the authorization header to the request\r\n            $authorization = @{\r\n                Authorization = \"Bearer $accesstoken\";\r\n                'Content-Type' = \"application/json\";\r\n                Accept = \"application/json\";\r\n            }\r\n\r\n            $baseGraphUri = \"https://graph.microsoft.com/\"\r\n            $removeGroupMembershipUri = $baseGraphUri + \"v1.0/groups/$($group.id)/members/$($azureADUser.id)\" + '/$ref'\r\n\r\n            $response = Invoke-RestMethod -Method DELETE -Uri $removeGroupMembershipUri -Headers $authorization -Verbose:$false\r\n            Write-Information \"Successfully removed AzureAD user [$userPrincipalName] from AzureAD group $($group)\"\r\n        } catch {\r\n            if($_ -like \"*Resource '$($group.id)' does not exist or one of its queried reference-property objects are not present*\"){\r\n                Write-Information \"AzureAD user [$userPrincipalName] is already no longer a member or AzureAD group $($group) does not exist anymore\";\r\n            }else{\r\n                Write-Warning \"Could not remove AzureAD user [$userPrincipalName] from AzureAD group $($group). Error: $($_.Exception.Message)\"\r\n            }\r\n        }\r\n    }\r\n} catch {\r\n    Write-Error \"Could not remove AzureAD user [$userPrincipalName] from AzureAD groups $($groupsToRemove). Error: $($_.Exception.Message)\"\r\n}","runInCloud":true}
 '@ 
 
-	$delegatedFormTaskGuid = [PSCustomObject]@{} 
-$delegatedFormTaskName = @'
-AzureAD-user-update-groupmemberships
-'@
-	Invoke-HelloIDAutomationTask -TaskName $delegatedFormTaskName -UseTemplate "False" -AutomationContainer "8" -Variables $tmpVariables -PowershellScript $tmpScript -ObjectGuid $delegatedFormRef.guid -ForceCreateTask $true -returnObject ([Ref]$delegatedFormTaskGuid) 
-} else {
-	Write-Warning "Delegated form '$delegatedFormName' already exists. Nothing to do with the Delegated Form task..." 
-}
-<# End: Delegated Form Task #>
+Invoke-HelloIDDelegatedForm -DelegatedFormName $delegatedFormName -DynamicFormGuid $dynamicFormGuid -AccessGroups $delegatedFormAccessGroupGuids -Categories $delegatedFormCategoryGuids -UseFaIcon "True" -FaIcon "fa fa-user" -task $tmpTask -returnObject ([Ref]$delegatedFormRef) 
+<# End: Delegated Form #>
+

@@ -1,16 +1,15 @@
 # Set TLS to accept TLS, TLS 1.1 and TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
+
 try {
-    $searchValue = $formInput.searchUser
+    $searchValue = $datasource.searchUser
     $searchQuery = "*$searchValue*"
       
-      
     if([String]::IsNullOrEmpty($searchValue) -eq $true){
-        Hid-Add-TaskResult -ResultValue []
     }else{
-        HID-Write-Summary -Message "Searching for: $searchQuery" -Event Information
+        Write-Information "Searching for: $searchQuery"
           
-        Hid-Write-Status -Message "Generating Microsoft Graph API Access Token user.." -Event Information
+        Write-Information "Generating Microsoft Graph API Access Token.."
         $baseUri = "https://login.microsoftonline.com/"
         $authUri = $baseUri + "$AADTenantID/oauth2/token"
         $body = @{
@@ -22,7 +21,8 @@ try {
  
         $Response = Invoke-RestMethod -Method POST -Uri $authUri -Body $body -ContentType 'application/x-www-form-urlencoded'
         $accessToken = $Response.access_token;
-        Hid-Write-Status -Message "Searching for: $searchQuery" -Event Information
+
+        Write-Information "Searching for: $searchQuery"
         #Add the authorization header to the request
         $authorization = @{
             Authorization = "Bearer $accesstoken";
@@ -46,23 +46,17 @@ try {
         }
         $users = $users | Sort-Object -Property DisplayName
         $resultCount = @($users).Count
-        Hid-Write-Status -Message "Result count: $resultCount" -Event Information
-        HID-Write-Summary -Message "Result count: $resultCount" -Event Information
+        Write-Information "Result count: $resultCount"
           
         if($resultCount -gt 0){
             foreach($user in $users){
                 $returnObject = @{UserPrincipalName=$user.UserPrincipalName; displayName=$user.displayName; department=$user.department; Title=$user.jobTitle; Company=$user.companyName}
-                Hid-Add-TaskResult -ResultValue $returnObject
+                Write-Output $returnObject
             }
-        } else {
-            Hid-Add-TaskResult -ResultValue []
         }
     }
 } catch {
     $errorDetailsMessage = ($_.ErrorDetails.Message | ConvertFrom-Json).error.message
-    HID-Write-Status -Message ("Error searching for AzureAD groups. Error: $($_.Exception.Message)" + $errorDetailsMessage) -Event Error
-    HID-Write-Summary -Message "Error searching for AzureAD groups" -Event Failed
-     
-    Hid-Add-TaskResult -ResultValue []
+    Write-Error ("Error searching for AzureAD groups. Error: $($_.Exception.Message)" + $errorDetailsMessage)
 }
   

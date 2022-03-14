@@ -1,0 +1,22 @@
+[
+  {
+    "key": "displayName",
+    "type": 0
+  },
+  {
+    "key": "department",
+    "type": 0
+  },
+  {
+    "key": "UserPrincipalName",
+    "type": 0
+  },
+  {
+    "key": "Company",
+    "type": 0
+  },
+  {
+    "key": "Title",
+    "type": 0
+  }
+]
