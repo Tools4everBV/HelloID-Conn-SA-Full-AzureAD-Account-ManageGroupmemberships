@@ -9,6 +9,7 @@ This HelloID Service Automation Delegated Form can manage the groupmemberships f
 ## Versioning
 | Version | Description | Date |
 | - | - | - |
+| 1.1.1   | Added version number and added auditlogging | 2022/08/03  |
 | 1.1.0   | Updated with code for SA agent | 2022/03/14  |
 | 1.0.1   | Added version number and updated all-in-one script | 2021/11/08  |
 | 1.0.0   | Initial release | 2021/09/02  |
@@ -83,7 +84,6 @@ There are multiple ways to authenticate to the Graph API with each has its own p
 *	It's IMPORTANT to copy the newly generated client secret, because you cannot see the value anymore after you close the page.
 *	At least we need to get is the <b>Tenant ID</b>. This can be found in the Azure Portal by going to <b>Azure Active Directory > Custom Domain Names</b>, and then finding the .onmicrosoft.com domain.
 
-
 ## All-in-one PowerShell setup script
 The PowerShell script "createform.ps1" contains a complete PowerShell script using the HelloID API to create the complete Form including user defined variables, tasks and data sources.
 
@@ -114,7 +114,7 @@ This Delegated Form uses the following resources in order to run
 
 ### Powershell data source 'AzureAD-user-generate-table-wildcard'
 
-### Delegated form task 'AzureAD-user-update-groupmemberships'
+### Delegated form task 'AzureAD Account - Manage groupmemberships'
 
 ## Getting help
 _If you need help, feel free to ask questions on our [forum](https://forum.helloid.com/forum/helloid-connectors/service-automation/204-helloid-sa-azure-ad-manage-groupmemberships-of-user)_

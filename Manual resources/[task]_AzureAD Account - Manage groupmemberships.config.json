@@ -1,4 +1,4 @@
 {
-  "name": "AzureAD Account - Manage groupmemberships",
-  "runInCloud": true
+    "name":  "AzureAD Account - Manage groupmemberships",
+    "runInCloud":  true
 }
