@@ -1,3 +1,106 @@
+# HelloID-Conn-SA-Full-AzureAD-Account-ManageGroupmemberships
+
+| :information_source: Information |
+| :------------------------------- |
+| This repository contains the connector and configuration code only. The implementer is responsible for acquiring the connection details such as certificate, tenant ID, and application ID. You might need administrator consent and to configure an App Registration in Microsoft Entra ID before implementing this connector. Please contact the client's application owner to coordinate the requirements. |
+
+## Description
+HelloID-Conn-SA-Full-AzureAD-Account-ManageGroupmemberships is a template designed for use with HelloID Service Automation (SA) Delegated Forms. It can be imported into HelloID and customized according to your environment.
+
+By using this delegated form, you can manage Microsoft Entra ID (Azure AD) group memberships for a selected user. The following options are available:
+ 1. Search and select the target user
+ 2. Move groups between Available and Member-of lists to add or remove
+ 3. Validate inputs and preview changes
+ 4. Apply updates to group memberships via Microsoft Graph
+ 5. Audit logging is written for each add/remove operation
+
+## Getting started
+### Requirements
+
+#### App Registration & Certificate Setup
+
+Before implementing this connector, make sure to configure a Microsoft Entra ID, an App Registration. During the setup process, you’ll create a new App Registration in the Entra portal, assign the necessary API permissions (such as user and group read/write), and generate and assign a certificate.
+
+Follow the official Microsoft documentation for creating an App Registration and setting up certificate-based authentication:
+- [App-only authentication with certificate (Exchange Online)](https://learn.microsoft.com/en-us/powershell/exchange/app-only-auth-powershell-v2?view=exchange-ps#set-up-app-only-authentication)
+
+#### HelloID-specific configuration
+
+Once you have completed the Microsoft setup and followed their best practices, configure the following HelloID-specific requirements.
+
+- **API Permissions** (Application permissions):
+  - `User.ReadWrite.All`
+  - `Group.ReadWrite.All`
+  - `GroupMember.ReadWrite.All`
+  - `UserAuthenticationMethod.ReadWrite.All`
+  - `User.EnableDisableAccount.All`
+  - `User-PasswordProfile.ReadWrite.All`
+  - `User-Phone.ReadWrite.All`
+- **Certificate:**
+  - Upload the public key file (.cer) in Entra ID
+  - Provide the certificate as a Base64 string in HelloID. For instructions on creating the certificate and obtaining the base64 string, refer to our forum post: [Setting up a certificate for Microsoft Graph API in HelloID connectors](https://forum.helloid.com/forum/helloid-provisioning/5338-instruction-setting-up-a-certificate-for-microsoft-graph-api-in-helloid-connectors#post5338)
+
+
+### Connection settings
+
+The following user-defined variables are used by the connector.
+
+| Setting                          | Description                                                  | Mandatory |
+| -------------------------------- | ------------------------------------------------------------ | --------- |
+| EntraIdTenantId                  | The Tenant ID (Directory ID) of the Entra ID tenant          | Yes       |
+| EntraIdAppId                     | The Application (Client) ID of the App Registration          | Yes       |
+| EntraIdCertificateBase64String   | Base64-encoded certificate (including private key)           | Yes       |
+| EntraIdCertificatePassword       | Password for the certificate private key                     | Yes       |
+| companyName                      | Company label shown in the UI (optional)                     | No        |
+
+## Remarks
+
+### Certificate-based Client Assertion
+- **JWT with `x5t#S256`**: The form generates a client-assertion JWT using the certificate's SHA-256 thumbprint (`x5t#S256`) and signs it with the private key to request an access token from Azure AD.
+
+### Group Membership Operations
+- **Add membership**: Uses `POST /v1.0/groups/{groupId}/members/$ref` with a body containing the target user `@odata.id`.
+- **Remove membership**: Uses `DELETE /v1.0/groups/{groupId}/members/{userId}/$ref`.
+- **Idempotency handling**: Attempts to add an existing membership and remove a non-existing membership are handled gracefully with informative audit logs.
+
+### Pagination
+- **`@odata.nextLink`**: When listing memberships (e.g., `memberOf`), the implementation follows `@odata.nextLink` to return complete results.
+
+### Data sources and form behavior
+- **Wildcard search**: Users can be searched by display name or UPN using a wildcard query.
+- **Dual list UI**: The form presents Available vs. Member-of group lists for intuitive membership changes.
+- **Run in Cloud**: All data sources and the delegated task are configured to run in the HelloID Cloud environment.
+
+## Development resources
+
+### API endpoints
+
+The following Microsoft Graph endpoints are used by the connector:
+
+| Endpoint                                              | Description                             |
+| ----------------------------------------------------- | --------------------------------------- |
+| `/v1.0/users`                                         | Retrieve and search users                |
+| `/v1.0/users/{userPrincipalName}`                     | Retrieve a specific user                 |
+| `/v1.0/users/{userPrincipalName}/memberOf`            | List a user's group memberships          |
+| `/v1.0/groups`                                        | List groups                              |
+| `/v1.0/groups/{groupId}/members/$ref`                 | Add a user to a group (POST)             |
+| `/v1.0/groups/{groupId}/members/{userId}/$ref`        | Remove a user from a group (DELETE)      |
+
+### API documentation
+
+- Microsoft Graph overview: https://learn.microsoft.com/graph/
+- Users API: https://learn.microsoft.com/graph/api/resources/users
+- Groups API: https://learn.microsoft.com/graph/api/resources/groups
+- Add member to group: https://learn.microsoft.com/graph/api/group-post-members
+- Remove member from group: https://learn.microsoft.com/graph/api/group-delete-members
+
+## Getting help
+> :bulb: **Tip:**  
+> For more information on Delegated Forms, please refer to our documentation pages: https://docs.helloid.com/en/service-automation/delegated-forms.html
+
+## HelloID docs
+The official HelloID documentation can be found at: https://docs.helloid.com/
+
 
 <!-- Description -->
 ## Description
