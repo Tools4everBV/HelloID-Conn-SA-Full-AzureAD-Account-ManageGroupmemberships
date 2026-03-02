@@ -21,7 +21,6 @@ $tmpName = @'
 EntraIdCertificatePassword
 '@ 
 $tmpValue = @'
-Tools4ever!
 '@ 
 $globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "False"});
 
@@ -30,7 +29,6 @@ $tmpName = @'
 EntraIdCertificateBase64String
 '@ 
 $tmpValue = @'
-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 4etFIiZp8g/WyQZwICB9A=
 '@ 
 $globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "False"});
 
@@ -39,7 +37,6 @@ $tmpName = @'
 EntraIdTenantId
 '@ 
 $tmpValue = @'
-6b5db95a-9873-426a-90d8-b84baa033a05
 '@ 
 $globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "False"});
 
@@ -48,19 +45,8 @@ $tmpName = @'
 EntraIdAppId
 '@ 
 $tmpValue = @'
-cb1b4227-62c7-40a9-8984-9c19c989df2f
 '@ 
 $globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "False"});
-
-#Global variable #5 >> companyName
-$tmpName = @'
-companyName
-'@ 
-$tmpValue = @'
-{{company.name}}
-'@ 
-$globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "False"});
-
 
 #make sure write-information logging is visual
 $InformationPreference = "continue"
