@@ -5,8 +5,10 @@
       {
         "key": "searchfield",
         "templateOptions": {
-          "label": "Search",
-          "placeholder": "Username or email address"
+          "label": "Search field (wildcard search in Display name, UserPrincipalName and mail)",
+          "placeholder": "Display name, UserPrincipalName, or mail (use * to search all users)",
+          "required": true,
+          "minLength": 1
         },
         "type": "input",
         "summaryVisibility": "Hide element",
@@ -17,7 +19,7 @@
       {
         "key": "gridUsers",
         "templateOptions": {
-          "label": "Select user account",
+          "label": "Select user",
           "required": true,
           "grid": {
             "columns": [
@@ -27,19 +29,31 @@
               },
               {
                 "headerName": "User Principal Name",
-                "field": "UserPrincipalName"
+                "field": "userPrincipalName"
+              },
+              {
+                "headerName": "Mail",
+                "field": "mail"
+              },
+              {
+                "headerName": "Description",
+                "field": "description"
+              },
+              {
+                "headerName": "Account Enabled",
+                "field": "accountEnabled"
               },
               {
                 "headerName": "Department",
                 "field": "department"
               },
               {
-                "headerName": "Title",
-                "field": "Title"
+                "headerName": "Job Title",
+                "field": "jobTitle"
               },
               {
-                "headerName": "Company",
-                "field": "Company"
+                "headerName": "Company Name",
+                "field": "companyName"
               }
             ],
             "height": 300,
@@ -50,7 +64,7 @@
             "input": {
               "propertyInputs": [
                 {
-                  "propertyName": "searchUser",
+                  "propertyName": "searchValue",
                   "otherFieldValue": {
                     "otherFieldKey": "searchfield"
                   }
@@ -58,7 +72,6 @@
               ]
             }
           },
-          "useFilter": false,
           "allowCsvDownload": true
         },
         "type": "grid",
@@ -73,50 +86,9 @@
     "label": "Memberships",
     "fields": [
       {
-        "key": "gridDetails",
-        "templateOptions": {
-          "label": "Basic attributes",
-          "required": false,
-          "grid": {
-            "columns": [
-              {
-                "headerName": "Name",
-                "field": "name"
-              },
-              {
-                "headerName": "Value",
-                "field": "value"
-              }
-            ],
-            "height": 350,
-            "rowSelection": "single"
-          },
-          "dataSourceConfig": {
-            "dataSourceGuid": "$dataSourceGuid_1",
-            "input": {
-              "propertyInputs": [
-                {
-                  "propertyName": "selectedUser",
-                  "otherFieldValue": {
-                    "otherFieldKey": "gridUsers"
-                  }
-                }
-              ]
-            }
-          },
-          "useFilter": false,
-          "allowCsvDownload": true
-        },
-        "type": "grid",
-        "summaryVisibility": "Hide element",
-        "requiresTemplateOptions": true,
-        "requiresKey": true,
-        "requiresDataSource": true
-      },
-      {
         "key": "memberships",
         "templateOptions": {
-          "label": "Memberships",
+          "label": "Manage user groupmemberships",
           "required": false,
           "filterable": true,
           "useDataSource": true,
@@ -136,18 +108,18 @@
               }
             ],
             "optionKeyProperty": "id",
-            "optionDisplayProperty": "name",
-            "labelLeft": "Available",
-            "labelRight": "Member of"
+            "optionDisplayProperty": "displayValue",
+            "labelLeft": "All groups",
+            "labelRight": "Current groupmemberships"
           },
           "dataSourceConfig": {
-            "dataSourceGuid": "$dataSourceGuid_2",
+            "dataSourceGuid": "$dataSourceGuid_1",
             "input": {
               "propertyInputs": []
             }
           },
           "destinationDataSourceConfig": {
-            "dataSourceGuid": "$dataSourceGuid_3",
+            "dataSourceGuid": "$dataSourceGuid_2",
             "input": {
               "propertyInputs": [
                 {

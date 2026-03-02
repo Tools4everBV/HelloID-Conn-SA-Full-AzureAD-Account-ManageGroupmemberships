@@ -1,19 +1,87 @@
-# Set TLS to accept TLS, TLS 1.1 and TLS 1.2
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
+# Variables configured in form
+$user = $form.gridUsers
+$groupsToAdd = $form.memberships.leftToRight
+$groupsToRemove = $form.memberships.RightToLeft
 
+# Global variables
+# Outcommented as these are set from Global Variables
+# $EntraIdTenantId = ""
+# $EntraIdAppId = ""
+# $EntraIdCertificateBase64String = ""
+# $EntraIdCertificatePassword = ""
+
+# Enable TLS1.2
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+
+# Set debug logging
 $VerbosePreference = "SilentlyContinue"
 $InformationPreference = "Continue"
 $WarningPreference = "Continue"
 
-$groupsToAdd = $form.memberships.leftToRight
-$groupsToRemove = $form.memberships.RightToLeft
-$userPrincipalName = $form.gridUsers.UserPrincipalName
+#region functions
+function Resolve-MicrosoftGraphAPIError {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [object]
+        $ErrorObject
+    )
+    process {
+        $httpErrorObj = [PSCustomObject]@{
+            ScriptLineNumber = $ErrorObject.InvocationInfo.ScriptLineNumber
+            Line             = $ErrorObject.InvocationInfo.Line
+            ErrorDetails     = $ErrorObject.Exception.Message
+            FriendlyMessage  = $ErrorObject.Exception.Message
+        }
+        if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
+            $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
+        }
+        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+            if ($null -ne $ErrorObject.Exception.Response) {
+                $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
+                if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
+                    $httpErrorObj.ErrorDetails = $streamReaderResponse
+                }
+            }
+        }
+        try {
+            $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json -ErrorAction Stop)
+            if ($errorDetailsObject.error_description) {
+                $httpErrorObj.FriendlyMessage = $errorDetailsObject.error_description
+            }
+            elseif ($errorDetailsObject.error.message) {
+                $httpErrorObj.FriendlyMessage = "$($errorDetailsObject.error.code): $($errorDetailsObject.error.message)"
+            }
+            elseif ($errorDetailsObject.error.details.message) {
+                $httpErrorObj.FriendlyMessage = "$($errorDetailsObject.error.details.code): $($errorDetailsObject.error.details.message)"
+            }
+            else {
+                $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
+            }
+        }
+        catch {
+            $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
+        }
+        Write-Output $httpErrorObj
+    }
+}
 
 function Get-MSEntraAccessToken {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        $Certificate
+        [ValidateNotNull()]
+        $Certificate,
+        
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]
+        $AppId,
+        
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]
+        $TenantId
     )
     try {
         # Get the DER encoded bytes of the certificate
@@ -37,9 +105,9 @@ function Get-MSEntraAccessToken {
 
         # Create a JWT payload
         $payload = [Ordered]@{
-            'iss' = "$entraidappid"
-            'sub' = "$entraidappid"
-            'aud' = "https://login.microsoftonline.com/$EntraIdTenantId/oauth2/token"
+            'iss' = "$($AppId)"
+            'sub' = "$($AppId)"
+            'aud' = "https://login.microsoftonline.com/$($TenantId)/oauth2/token"
             'exp' = ($currentUnixTimestamp + 3600) # Expires in 1 hour
             'nbf' = ($currentUnixTimestamp - 300) # Not before 5 minutes ago
             'iat' = $currentUnixTimestamp
@@ -56,25 +124,20 @@ function Get-MSEntraAccessToken {
         $signatureInput = "$base64Header.$base64Payload"
         $signature = $rsa.SignData([Text.Encoding]::UTF8.GetBytes($signatureInput), 'SHA256')
         $base64Signature = [System.Convert]::ToBase64String($signature).Replace('+', '-').Replace('/', '_').Replace('=', '')
-	
-	# Extract the private key from the certificate
-        if (-not $Certificate.HasPrivateKey -or -not $Certificate.PrivateKey) {
-            throw "The certificate does not have a private key."
-        }
 
         # Create the JWT token
         $jwtToken = "$($base64Header).$($base64Payload).$($base64Signature)"
 
         $createEntraAccessTokenBody = @{
             grant_type            = 'client_credentials'
-            client_id             = $entraidappid
+            client_id             = $AppId
             client_assertion_type = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
             client_assertion      = $jwtToken
             resource              = 'https://graph.microsoft.com'
         }
 
         $createEntraAccessTokenSplatParams = @{
-            Uri         = "https://login.microsoftonline.com/$EntraIdTenantId/oauth2/token"
+            Uri         = "https://login.microsoftonline.com/$($TenantId)/oauth2/token"
             Body        = $createEntraAccessTokenBody
             Method      = 'POST'
             ContentType = 'application/x-www-form-urlencoded'
@@ -92,170 +155,203 @@ function Get-MSEntraAccessToken {
 
 function Get-MSEntraCertificate {
     [CmdletBinding()]
-    param()
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]
+        $CertificateBase64String,
+        
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]
+        $CertificatePassword
+    )
     try {
-        $rawCertificate = [system.convert]::FromBase64String($EntraIdCertificateBase64String)
-        $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($rawCertificate, $EntraIdCertificatePassword, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
+        $rawCertificate = [system.convert]::FromBase64String($CertificateBase64String)
+        $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($rawCertificate, $CertificatePassword, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
         Write-Output $certificate
     }
     catch {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
+#endregion functions
 
 try {
-    # Setup Connection with Entra/Exo
-    Write-Verbose 'connecting to MS-Entra'
-    $certificate = Get-MSEntraCertificate
-    $entraToken = Get-MSEntraAccessToken -Certificate $certificate
+    # Convert base64 certificate string to certificate object
+    $actionMessage = "converting base64 certificate string to certificate object"
+    $certificate = Get-MSEntraCertificate -CertificateBase64String $EntraIdCertificateBase64String -CertificatePassword $EntraIdCertificatePassword
+    Write-Verbose "Converted base64 certificate string to certificate object"
+
+    # Create access token
+    $actionMessage = "creating access token"
+    $entraToken = Get-MSEntraAccessToken -Certificate $certificate -AppId $EntraIdAppId -TenantId $EntraIdTenantId
+    Write-Verbose "Created access token"
+
+    # Create headers
+    $actionMessage = "creating headers"
+    $headers = @{
+        "Authorization"    = "Bearer $($entraToken)"
+        "Accept"           = "application/json"
+        "Content-Type"     = "application/json"
+        "ConsistencyLevel" = "eventual" # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
+    }
+    Write-Verbose "Created headers"
+
+    foreach ($groupToAdd in $groupsToAdd) {
+        try {
+            # Add member to group
+            # API docs: https://learn.microsoft.com/en-us/graph/api/group-post-members?view=graph-rest-1.0&tabs=http
+            $actionMessage = "adding user [$($user.displayName)] with id [$($user.id)] as member to group [$($groupToAdd.displayName)] with id [$($groupToAdd.id)]"
+            $addGroupMemberBody = @{ 
+                "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($user.id)"
+            }
+            $addGroupMemberSplatParams = @{
+                Uri         = "https://graph.microsoft.com/v1.0/groups/$($groupToAdd.id)/members/`$ref"
+                Headers     = $headers
+                Method      = "POST"
+                Body        = ($addGroupMemberBody | ConvertTo-Json -Depth 10)
+                Verbose     = $false
+                ErrorAction = "Stop"
+            }
+            $addGroupMemberResponse = Invoke-RestMethod @addGroupMemberSplatParams
+
+            $Log = @{
+                Action            = "GrantMembership" # optional. ENUM (undefined = default) 
+                System            = "EntraID" # optional (free format text) 
+                Message           = "Added user [$($user.displayName)] with id [$($user.id)] as member to group [$($groupToAdd.displayName)] with id [$($groupToAdd.id)]." # required (free format text) 
+                IsError           = $false # optional. Elastic reporting purposes only. (default = $false. $true = Executed action returned an error) 
+                TargetDisplayName = $user.displayName # optional (free format text)
+                TargetIdentifier  = $user.id # optional (free format text)
+            }
+            Write-Information -Tags "Audit" -MessageData $log
+        }
+        catch {
+            $ex = $PSItem
+            if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
+                $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+                $errorObj = Resolve-MicrosoftGraphAPIError -ErrorObject $ex
+                $auditMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
+                $warningMessage = "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+            }
+            else {
+                $auditMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
+                $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+            }
+
+            if ($auditMessage -like "*One or more added object references already exist for the following modified properties: 'members'*") {
+                $Log = @{
+                    Action            = "GrantMembership" # optional. ENUM (undefined = default) 
+                    System            = "EntraID" # optional (free format text) 
+                    Message           = "Skipped $($actionMessage). Reason: User is already member of this group." # required (free format text) 
+                    IsError           = $false # optional. Elastic reporting purposes only. (default = $false. $true = Executed action returned an error) 
+                    TargetDisplayName = $user.displayName # optional (free format text)
+                    TargetIdentifier  = $user.id # optional (free format text)
+                }
+                Write-Information -Tags "Audit" -MessageData $log
+            }
+            else {
+                $Log = @{
+                    Action            = "GrantMembership" # optional. ENUM (undefined = default) 
+                    System            = "EntraID" # optional (free format text) 
+                    Message           = $auditMessage # required (free format text) 
+                    IsError           = $true # optional. Elastic reporting purposes only. (default = $false. $true = Executed action returned an error) 
+                    TargetDisplayName = $user.displayName # optional (free format text)
+                    TargetIdentifier  = $user.id # optional (free format text)
+                }
+                Write-Information -Tags "Audit" -MessageData $log
+                Write-Warning $warningMessage
+                Write-Error $auditMessage
+            }
+        }
+    }
+
+    foreach ($groupToRemove in $groupsToRemove) {
+        try {
+            # Remove member from group
+            # API docs: https://learn.microsoft.com/en-us/graph/api/group-delete-members?view=graph-rest-1.0&tabs=http
+            $actionMessage = "removing user [$($user.displayName)] with id [$($user.id)] as member from group [$($groupToRemove.displayName)] with id [$($groupToRemove.id)]"
+            $removeGroupMemberSplatParams = @{
+                Uri         = "https://graph.microsoft.com/v1.0/groups/$($groupToRemove.id)/members/$($user.id)/`$ref"
+                Headers     = $headers
+                Method      = "DELETE"
+                Verbose     = $false
+                ErrorAction = "Stop"
+            }
     
-    #Add the authorization header to the request
-    $authorization = @{
-        Authorization = "Bearer $entraToken";
-        'Content-Type' = "application/json";
-        Accept = "application/json";
-    } 
-
-    $baseSearchUri = "https://graph.microsoft.com/"
-    $searchUri = $baseSearchUri + "v1.0/users/$userPrincipalName"
-    $azureADUser = Invoke-RestMethod -Uri $searchUri -Method Get -Headers $authorization -Verbose:$false
-    Write-Information "Finished searching EntraID user [$userPrincipalName]"
-} catch {
-    Write-Error "Could not find EntraID user [$userPrincipalName]. Error: $($_.Exception.Message)"
-}
-
-try {
-    foreach($group in $groupsToAdd){
-        try{
-            #Add the authorization header to the request
-            $authorization = @{
-                Authorization = "Bearer $entraToken";
-                'Content-Type' = "application/json";
-                Accept = "application/json";
-            }
-
-            $baseGraphUri = "https://graph.microsoft.com/"
-            $addGroupMembershipUri = $baseGraphUri + "v1.0/groups/$($group.id)/members" + '/$ref'
-            $body = @{ "@odata.id"= "https://graph.microsoft.com/v1.0/users/$($azureADUser.id)" } | ConvertTo-Json -Depth 10
-
-            $response = Invoke-RestMethod -Method POST -Uri $addGroupMembershipUri -Body $body -Headers $authorization -Verbose:$false
-            Write-Information "Successfully added EntraID user [$userPrincipalName] to EntraID group $($group.name)"
+            $removeGroupMemberResponse = Invoke-RestMethod @removeGroupMemberSplatParams
 
             $Log = @{
-                Action            = "UpdateResource" # optional. ENUM (undefined = default) 
+                Action            = "RevokeMembership" # optional. ENUM (undefined = default) 
                 System            = "EntraID" # optional (free format text) 
-                Message           = "Successfully added EntraID user [$userPrincipalName] to EntraID group $($group.name)." # required (free format text) 
+                Message           = "Removed user [$($user.displayName)] with id [$($user.id)] as member from group [$($groupToRemove.displayName)] with id [$($groupToRemove.id)]." # required (free format text) 
                 IsError           = $false # optional. Elastic reporting purposes only. (default = $false. $true = Executed action returned an error) 
-                TargetDisplayName = $userPrincipalName # optional (free format text) 
-                TargetIdentifier  = $([string]$group.id) # optional (free format text) 
+                TargetDisplayName = $user.displayName # optional (free format text)
+                TargetIdentifier  = $user.id # optional (free format text)
             }
-            #send result back  
             Write-Information -Tags "Audit" -MessageData $log
-        } catch {
-            if($_ -like "*One or more added object references already exist for the following modified properties*"){
-                Write-Information "EntraID user [$userPrincipalName] is already a member of group $($group.name)"
+        }
+        catch {
+            $ex = $PSItem
+            if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
+                $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+                $errorObj = Resolve-MicrosoftGraphAPIError -ErrorObject $ex
+                $auditMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
+                $warningMessage = "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+            }
+            else {
+                $auditMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
+                $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+            }
+
+            if ($auditMessage -like "*ResourceNotFound*" -and $auditMessage -like "*$($group.id)*") {
                 $Log = @{
-                    Action            = "UpdateResource" # optional. ENUM (undefined = default) 
+                    Action            = "RevokeMembership" # optional. ENUM (undefined = default) 
                     System            = "EntraID" # optional (free format text) 
-                    Message           = "EntraID user [$userPrincipalName] is already a member of group $($group.name)." # required (free format text) 
+                    Message           = "Skipped $($actionMessage). Reason: User is already no longer member or this group no longer exists." # required (free format text) 
                     IsError           = $false # optional. Elastic reporting purposes only. (default = $false. $true = Executed action returned an error) 
-                    TargetDisplayName = $userPrincipalName # optional (free format text) 
-                    TargetIdentifier  = $([string]$group.id) # optional (free format text) 
+                    TargetDisplayName = $user.displayName # optional (free format text)
+                    TargetIdentifier  = $user.id # optional (free format text)
                 }
-                #send result back  
                 Write-Information -Tags "Audit" -MessageData $log
-            }else{
-                Write-Warning "Could not add EntraID user [$userPrincipalName] to EntraID group $($group). Error: $($_.Exception.Message)"
+            }
+            else {
                 $Log = @{
-                    Action            = "UpdateResource" # optional. ENUM (undefined = default) 
+                    Action            = "RevokeMembership" # optional. ENUM (undefined = default) 
                     System            = "EntraID" # optional (free format text) 
-                    Message           = "Could not add EntraID user [$userPrincipalName] to EntraID group $($group.name)." # required (free format text) 
+                    Message           = $auditMessage # required (free format text) 
                     IsError           = $true # optional. Elastic reporting purposes only. (default = $false. $true = Executed action returned an error) 
-                    TargetDisplayName = $userPrincipalName # optional (free format text) 
-                    TargetIdentifier  = $([string]$group.id) # optional (free format text) 
+                    TargetDisplayName = $user.displayName # optional (free format text)
+                    TargetIdentifier  = $user.id # optional (free format text)
                 }
-                #send result back  
                 Write-Information -Tags "Audit" -MessageData $log
+                Write-Warning $warningMessage
+                Write-Error $auditMessage
             }
         }
     }
-} catch {
-    Write-Error "Could not add EntraID user [$userPrincipalName] to EntraID groups $($groupsToAdd). Error: $($_.Exception.Message)"
-    $Log = @{
-        Action            = "UpdateResource" # optional. ENUM (undefined = default) 
-        System            = "EntraID" # optional (free format text) 
-        Message           = "Could not add EntraID user [$userPrincipalName] to EntraID groups $($groupsToAdd)." # required (free format text) 
-        IsError           = $true # optional. Elastic reporting purposes only. (default = $false. $true = Executed action returned an error) 
-        TargetDisplayName = $userPrincipalName # optional (free format text) 
-        TargetIdentifier  = $($groupsToAdd) # optional (free format text) 
-    }
-    #send result back  
-    Write-Information -Tags "Audit" -MessageData $log
 }
-
-try {
-    foreach($group in $groupsToRemove){
-        try{
-            #Add the authorization header to the request
-            $authorization = @{
-                Authorization = "Bearer $accesstoken";
-                'Content-Type' = "application/json";
-                Accept = "application/json";
-            }
-
-            $baseGraphUri = "https://graph.microsoft.com/"
-            $removeGroupMembershipUri = $baseGraphUri + "v1.0/groups/$($group.id)/members/$($azureADUser.id)" + '/$ref'
-
-            $response = Invoke-RestMethod -Method DELETE -Uri $removeGroupMembershipUri -Headers $authorization -Verbose:$false
-            Write-Information "Successfully removed EntraID user [$userPrincipalName] from EntraID group $($group.name)"
-            $Log = @{
-                Action            = "UpdateResource" # optional. ENUM (undefined = default) 
-                System            = "EntraID" # optional (free format text) 
-                Message           = "Successfully removed EntraID user [$userPrincipalName] from EntraID group $($group.name)." # required (free format text) 
-                IsError           = $false # optional. Elastic reporting purposes only. (default = $false. $true = Executed action returned an error) 
-                TargetDisplayName = $userPrincipalName # optional (free format text) 
-                TargetIdentifier  = $([string]$group.id) # optional (free format text) 
-            }
-            #send result back  
-            Write-Information -Tags "Audit" -MessageData $log
-        } catch {
-            if($_ -like "*Resource '$($group.id)' does not exist or one of its queried reference-property objects are not present*"){
-                Write-Information "EntraID user [$userPrincipalName] is already no longer a member or EntraID group $($group.name) does not exist anymore";
-                $Log = @{
-                    Action            = "UpdateResource" # optional. ENUM (undefined = default) 
-                    System            = "EntraID" # optional (free format text) 
-                    Message           = "EntraID user [$userPrincipalName] is already no longer a member or EntraID group $($group.name) does not exist anymore." # required (free format text) 
-                    IsError           = $false # optional. Elastic reporting purposes only. (default = $false. $true = Executed action returned an error) 
-                    TargetDisplayName = $userPrincipalName # optional (free format text) 
-                    TargetIdentifier  = $([string]$group.id) # optional (free format text) 
-                }
-                #send result back  
-                Write-Information -Tags "Audit" -MessageData $log
-            }else{
-                Write-Warning "Could not remove EntraID user [$userPrincipalName] from EntraID group $($group.name). Error: $($_.Exception.Message)"
-                $Log = @{
-                    Action            = "UpdateResource" # optional. ENUM (undefined = default) 
-                    System            = "EntraID" # optional (free format text) 
-                    Message           = "Could not remove EntraID user [$userPrincipalName] from EntraID group $($group.name)." # required (free format text) 
-                    IsError           = $true # optional. Elastic reporting purposes only. (default = $false. $true = Executed action returned an error) 
-                    TargetDisplayName = $userPrincipalName # optional (free format text) 
-                    TargetIdentifier  = $([string]$group.id) # optional (free format text) 
-                }
-                #send result back  
-                Write-Information -Tags "Audit" -MessageData $log
-            }
-        }
+catch {
+    $ex = $PSItem
+    if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
+        $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+        $errorObj = Resolve-MicrosoftGraphAPIError -ErrorObject $ex
+        $auditMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
+        $warningMessage = "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     }
-} catch {
-    Write-Error "Could not remove EntraID user [$userPrincipalName] from EntraID groups $($groupsToRemove). Error: $($_.Exception.Message)"
+    else {
+        $auditMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
+        $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+    }
     $Log = @{
-        Action            = "UpdateResource" # optional. ENUM (undefined = default) 
+        Action            = "undefined" # optional. ENUM (undefined = default) 
         System            = "EntraID" # optional (free format text) 
-        Message           = "Could not remove EntraID user [$userPrincipalName] from EntraID groups $($groupsToRemove)." # required (free format text) 
+        Message           = $auditMessage # required (free format text) 
         IsError           = $true # optional. Elastic reporting purposes only. (default = $false. $true = Executed action returned an error) 
-        TargetDisplayName = $userPrincipalName # optional (free format text) 
-        TargetIdentifier  = $($groupsToRemove) # optional (free format text) 
+        TargetDisplayName = $user.displayName # optional (free format text)
+        TargetIdentifier  = $user.id # optional (free format text)
     }
-    #send result back  
     Write-Information -Tags "Audit" -MessageData $log
+    Write-Warning $warningMessage
+    Write-Error $auditMessage
 }
