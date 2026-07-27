@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.0.1] - 2026-07-27
+
+### Fixed
+
+- Fixed [#3](https://github.com/Tools4everBV/HelloID-Conn-SA-Full-Microsoft-EntraID-Account-ManageGroupmemberships/issues/3): When requesting the memberships of a user, when the user has none, an incident is created indicating the execution of datasource 'entra-id-account-manage-groupmemberships | EntraID-Get-User-GroupMemberships' has failed.
+
 ## [2.0.0] - 2026-03-02
 
 This is a major release that migrates from Azure AD to Microsoft Entra ID terminology and replaces client secret authentication with certificate-based authentication. This release includes breaking changes that require reconfiguration of global variables and App Registration settings.
