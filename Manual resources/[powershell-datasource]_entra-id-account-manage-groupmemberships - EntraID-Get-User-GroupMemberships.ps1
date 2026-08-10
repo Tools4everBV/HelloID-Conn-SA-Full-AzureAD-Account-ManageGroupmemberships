@@ -233,11 +233,13 @@ try {
 
     # Send results to HelloID
     $actionMessage = "sending results to HelloID"
-    $microsoftEntraIDUserGroups | Add-Member -MemberType NoteProperty -Name "displayValue" -Value $null -Force
-    $microsoftEntraIDUserGroups | Sort-Object -Property displayName | ForEach-Object {
-        # Set displayValue property with format: Display Name (Description)
-        $_.displayValue = "$($_.displayName) ($($_.description))"
-        Write-Output $_
+    if ($microsoftEntraIDUserGroups) {
+        $microsoftEntraIDUserGroups | Add-Member -MemberType NoteProperty -Name "displayValue" -Value $null -Force
+        $microsoftEntraIDUserGroups | Sort-Object -Property displayName | ForEach-Object {
+            # Set displayValue property with format: Display Name (Description)
+            $_.displayValue = "$($_.displayName) ($($_.description))"
+            Write-Output $_
+        }
     }
 }
 catch {
